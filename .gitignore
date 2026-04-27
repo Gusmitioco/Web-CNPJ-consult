@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime logs
+*.log
+.server.log
+.server.err
+.vite-dev.log
+.vite-dev.err
+.vite-preview.log
+.vite-preview.err
+
+# TypeScript incremental cache
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local generated runtime data
+# Keep the folder structure documented, but avoid committing local consultation history.
+server/data/*.json
+!server/data/.gitkeep
