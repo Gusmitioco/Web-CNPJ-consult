@@ -8,8 +8,9 @@ import { SearchPanel } from "./components/SearchPanel";
 import { SectionCard } from "./components/SectionCard";
 import { navItems } from "./components/Sidebar";
 import { fetchCompanyByCnpj } from "./services/cnpjApi";
-import { fetchConsultationHistory, type ConsultationHistoryItem } from "./services/historyApi";
+import { fetchConsultationHistory, saveConsultationHistory, type ConsultationHistoryItem } from "./services/historyApi";
 import type { Company, Field } from "./types";
+import { exportCompanyJson, exportCompanyPdf } from "./utils/exportCompany";
 
 function fieldsToText(title: string, fields: Field[]) {
   return [title, ...fields.map((field) => `${field.label}: ${field.value}`)].join("\n");
@@ -106,7 +107,7 @@ function App() {
       const result = await fetchCompanyByCnpj(cnpj);
       setCompany(result);
       setLastQuery(nowLabel());
-      await loadHistory();
+      setHistory(saveConsultationHistory(result));
       notify("Consulta carregada");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel consultar o CNPJ.";
@@ -119,6 +120,20 @@ function App() {
 
   function toggleTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }
+
+  function handleExportJson() {
+    if (!company) return;
+
+    exportCompanyJson(company);
+    notify("JSON exportado");
+  }
+
+  function handleExportPdf() {
+    if (!company) return;
+
+    const opened = exportCompanyPdf(company);
+    notify(opened ? "Relatorio PDF aberto" : "Popup bloqueado pelo navegador");
   }
 
   useEffect(() => {
@@ -236,6 +251,7 @@ function App() {
                     <CopyButton text={companyText(company)} label="Copiar tudo" onCopied={() => notify()} />
                     <button
                       type="button"
+                      onClick={handleExportPdf}
                       className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
                     >
                       <Download className="h-4 w-4" aria-hidden="true" />
@@ -243,6 +259,7 @@ function App() {
                     </button>
                     <button
                       type="button"
+                      onClick={handleExportJson}
                       className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
                     >
                       <FileJson className="h-4 w-4" aria-hidden="true" />
