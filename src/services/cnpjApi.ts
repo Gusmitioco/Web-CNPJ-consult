@@ -16,7 +16,14 @@ type BrasilApiCompany = {
   cnpj: string;
   razao_social?: string;
   nome_fantasia?: string;
+  identificador_matriz_filial?: number;
+  descricao_identificador_matriz_filial?: string;
+  codigo_situacao_cadastral?: number;
   descricao_situacao_cadastral?: string;
+  data_situacao_cadastral?: string;
+  motivo_situacao_cadastral?: string;
+  situacao_especial?: string;
+  data_situacao_especial?: string;
   data_inicio_atividade?: string;
   natureza_juridica?: string;
   descricao_porte?: string;
@@ -31,11 +38,17 @@ type BrasilApiCompany = {
   municipio?: string;
   uf?: string;
   cep?: string;
+  codigo_municipio_ibge?: number;
   email?: string;
   ddd_telefone1?: string;
   ddd_telefone2?: string;
+  ente_federativo_responsavel?: string;
   opcao_pelo_simples?: boolean | string | null;
+  data_opcao_pelo_simples?: string;
+  data_exclusao_do_simples?: string;
   opcao_pelo_mei?: boolean | string | null;
+  data_opcao_pelo_mei?: string;
+  data_exclusao_do_mei?: string;
   qsa?: BrasilApiPartner[];
 };
 
@@ -71,6 +84,25 @@ function yesNo(value: boolean | string | null | undefined) {
   if (typeof value === "boolean") return value ? "Sim" : "Nao";
   if (!value) return "Nao informado";
   return String(value);
+}
+
+function valueOrUnknown(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return "Nao informado";
+  return String(value);
+}
+
+function dateOrUnknown(value?: string | null) {
+  return value ? formatDate(value) : "Nao informado";
+}
+
+function optionPeriod(selected: boolean | string | null | undefined, start?: string, end?: string) {
+  const base = yesNo(selected);
+  const startDate = dateOrUnknown(start);
+  const endDate = dateOrUnknown(end);
+
+  if (startDate === "Nao informado" && endDate === "Nao informado") return base;
+  if (endDate !== "Nao informado") return `${base} - opcao em ${startDate}, exclusao em ${endDate}`;
+  return `${base} - opcao em ${startDate}`;
 }
 
 function formatCnae(code?: number, description?: string) {
@@ -113,12 +145,21 @@ function mapBrasilApiToCompany(data: BrasilApiCompany): Company {
       { label: "Telefone", value: phone || "Nao informado" }
     ],
     fiscal: [
-      { label: "Inscricao estadual", value: "Pendente de integracao SEFAZ/Sintegra" },
+      { label: "Situacao cadastral RF", value: valueOrUnknown(data.descricao_situacao_cadastral) },
+      { label: "Codigo situacao RF", value: valueOrUnknown(data.codigo_situacao_cadastral) },
+      { label: "Situacao desde", value: dateOrUnknown(data.data_situacao_cadastral) },
+      { label: "Motivo situacao", value: valueOrUnknown(data.motivo_situacao_cadastral) },
+      { label: "Tipo de unidade", value: valueOrUnknown(data.descricao_identificador_matriz_filial) },
+      { label: "Codigo matriz/filial", value: valueOrUnknown(data.identificador_matriz_filial) },
+      { label: "Inscricao estadual", value: "Nao consultada nesta etapa - requer fonte SEFAZ/Sintegra" },
       { label: "UF cadastro", value: data.uf || "Nao informado" },
-      { label: "Regime", value: "Pendente de integracao fiscal" },
-      { label: "Simples Nacional", value: yesNo(data.opcao_pelo_simples) },
-      { label: "MEI", value: yesNo(data.opcao_pelo_mei) },
-      { label: "Fonte fiscal", value: "BrasilAPI / Receita Federal" }
+      { label: "Municipio IBGE", value: valueOrUnknown(data.codigo_municipio_ibge) },
+      { label: "Ente federativo", value: valueOrUnknown(data.ente_federativo_responsavel) },
+      { label: "Simples Nacional", value: optionPeriod(data.opcao_pelo_simples, data.data_opcao_pelo_simples, data.data_exclusao_do_simples) },
+      { label: "MEI", value: optionPeriod(data.opcao_pelo_mei, data.data_opcao_pelo_mei, data.data_exclusao_do_mei) },
+      { label: "Situacao especial", value: valueOrUnknown(data.situacao_especial) },
+      { label: "Data situacao especial", value: dateOrUnknown(data.data_situacao_especial) },
+      { label: "Fonte fiscal", value: "BrasilAPI / Receita Federal - dados publicos de CNPJ" }
     ],
     partners: data.qsa?.length
       ? data.qsa.map((partner) => ({
@@ -130,7 +171,7 @@ function mapBrasilApiToCompany(data: BrasilApiCompany): Company {
     history: [
       { source: "BrasilAPI", status: "Concluida", date: nowLabel() },
       { source: "Receita Federal", status: "Dados publicos retornados", date: nowLabel() },
-      { source: "SEFAZ/Sintegra", status: "Pendente de integracao", date: nowLabel() }
+      { source: "SEFAZ/Sintegra", status: "Nao consultado nesta etapa", date: nowLabel() }
     ]
   };
 }
@@ -140,11 +181,13 @@ export async function fetchCompanyByCnpj(cnpj: string) {
   const response = await fetch(`/api/cnpj/${digits}`);
 
   if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { message?: string };
+
     if (response.status === 404) {
-      throw new Error("CNPJ nao encontrado na fonte publica.");
+      throw new Error(payload.message || "CNPJ nao encontrado na fonte publica.");
     }
 
-    throw new Error("Nao foi possivel consultar o CNPJ agora.");
+    throw new Error(payload.message || "Nao foi possivel consultar o CNPJ agora.");
   }
 
   const data = (await response.json()) as BrasilApiCompany;

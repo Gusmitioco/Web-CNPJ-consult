@@ -6,9 +6,10 @@ Projeto criado com ajuda do Codex para estudar e prototipar uma ferramenta de co
 - organizacao de backend intermediario;
 - cuidados com raspagem de dados;
 - consulta de dados publicos de empresas;
-- estudo de uma interface util para ambiente de trabalho.
+- estudo de uma interface util para ambiente de trabalho;
+- boas praticas iniciais de seguranca para uma aplicacao exposta em rede local.
 
-Esta versao corresponde a **build 16**, a ultima build do historico documentado.
+Esta versao evoluiu a partir da **build 16**, que foi a ultima build do historico inicial documentado antes dos commits no Git.
 
 ## Objetivo
 
@@ -19,17 +20,22 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 ## Funcionalidades atuais
 
 - Consulta automatica ao completar um CNPJ valido.
-- Validacao local de CNPJ.
+- Aceita CNPJ colado com ou sem mascara.
+- Validacao local e no backend para CNPJ.
 - Backend Node local com rota `/api/cnpj/:cnpj`.
 - Integracao inicial com BrasilAPI.
 - Cache em memoria por 10 minutos.
-- Historico persistente de consultas em `server/data/history.json`.
-- Rota `/api/history`.
+- Historico de consultas local por navegador, usando `localStorage`.
+- Exportacao em JSON estruturado.
+- Relatorio para salvar/imprimir em PDF pelo navegador.
 - Interface React com efeito glassmorphism.
 - Modo claro e modo noite.
 - Modo noite premium com vidro escuro, ciano e fundo azul-petroleo.
 - Botoes de copiar dados por campo/secao.
 - Navegacao por secoes apos carregar uma consulta.
+- Scrollbar personalizada conforme o tema.
+- Dados fiscais enriquecidos com campos publicos retornados pela BrasilAPI/Receita Federal.
+- Backend com timeout de API externa, rate limit simples por IP e headers basicos de seguranca.
 
 ## Como rodar
 
@@ -77,13 +83,13 @@ npm run dev
 src/
   components/       Componentes React da interface
   services/         Chamadas para APIs locais
-  utils/            Validacao, formatacao e copia
+  utils/            Validacao, formatacao, copia e exportacao
   App.tsx           Composicao principal
   index.css         Tailwind, temas e glassmorphism
 
 server/
-  index.mjs         Servidor Node local, proxy de API e historico
-  data/             Historico local gerado em runtime
+  index.mjs         Servidor Node local, proxy de API, cache e protecoes basicas
+  data/             Pasta mantida para estrutura, sem historico compartilhado
 
 dist/
   Build de producao gerada pelo Vite
@@ -118,6 +124,8 @@ Resumo:
 - Build 15: historico persistente e tema dia/noite.
 - Build 16: modo noite premium glassmorphism.
 
+Depois da build 16, os commits passaram a documentar incrementos menores, incluindo exportacao JSON/PDF, historico local por navegador, scrollbar personalizada, melhorias na formatacao do CNPJ, dados fiscais mais completos e protecoes basicas no backend.
+
 ## Observacoes sobre APIs e raspagem
 
 O frontend nao deve raspar paginas da Receita Federal, SEFAZ ou Sintegra diretamente. Alem de instavel, isso pode esbarrar em CORS, captcha, mudancas de layout, bloqueios e regras de acesso.
@@ -130,11 +138,25 @@ Navegador -> Backend proprio -> APIs oficiais/terceiras/fontes autorizadas
 
 Para dados fiscais mais sensiveis ou estaduais, o caminho adequado e usar uma API fiscal especializada ou integracoes oficiais com certificado/acesso autorizado.
 
+Atualmente o projeto nao afirma inscricao estadual ativa nem habilitacao em SEFAZ/Sintegra quando esses dados nao foram consultados. A interface mostra esses pontos como pendentes para evitar conclusoes fiscais incorretas.
+
+## Seguranca
+
+O backend aplica algumas protecoes iniciais:
+
+- valida CNPJ no servidor;
+- limita volume de consultas por IP em uma janela curta;
+- usa timeout ao chamar a fonte externa;
+- envia headers basicos como `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` e `Referrer-Policy`;
+- nao persiste historico de consultas no servidor.
+
+Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor fora da rede local, ainda seria necessario revisar autenticacao, logs, observabilidade, HTTPS, controle de origem, limite de payloads e politica de uso das APIs.
+
 ## Proximas etapas sugeridas
 
-- Implementar exportacao real em JSON e PDF.
 - Modularizar o backend.
-- Migrar historico/cache para SQLite.
 - Adicionar provedores alternativos de CNPJ.
 - Criar estrutura para integracoes fiscais por UF.
 - Adicionar tela de configuracoes para tokens, provedores e tempo de cache.
+- Criar testes automatizados para validacao de CNPJ, backend e exportacao.
+- Revisar hardening antes de qualquer publicacao externa.

@@ -23,12 +23,21 @@ export const mockCompany: Company = {
     { label: "Telefone", value: "(41) 3333-2020" }
   ],
   fiscal: [
-    { label: "Inscricao estadual", value: "903.45678-90" },
+    { label: "Situacao cadastral RF", value: "Ativa" },
+    { label: "Codigo situacao RF", value: "2" },
+    { label: "Situacao desde", value: "14/03/2018" },
+    { label: "Motivo situacao", value: "Nao informado" },
+    { label: "Tipo de unidade", value: "Matriz" },
+    { label: "Codigo matriz/filial", value: "1" },
+    { label: "Inscricao estadual", value: "Nao consultada nesta etapa - requer fonte SEFAZ/Sintegra" },
     { label: "UF cadastro", value: "PR" },
-    { label: "Regime", value: "Regime Normal" },
+    { label: "Municipio IBGE", value: "4106902" },
+    { label: "Ente federativo", value: "Nao informado" },
     { label: "Simples Nacional", value: "Nao optante" },
-    { label: "Credenciamento NFC-e", value: "Habilitado" },
-    { label: "Fonte fiscal", value: "Sintegra / SEFAZ PR" }
+    { label: "MEI", value: "Nao" },
+    { label: "Situacao especial", value: "Nao informado" },
+    { label: "Data situacao especial", value: "Nao informado" },
+    { label: "Fonte fiscal", value: "BrasilAPI / Receita Federal - dados publicos de CNPJ" }
   ],
   partners: [
     { name: "Mariana Duarte Silva", role: "Socio-administradora", since: "14/03/2018" },
@@ -36,7 +45,7 @@ export const mockCompany: Company = {
   ],
   history: [
     { source: "Receita Federal", status: "Concluida", date: "25/04/2026 10:42" },
-    { source: "Sintegra", status: "Concluida", date: "25/04/2026 10:42" },
-    { source: "SEFAZ", status: "Concluida", date: "25/04/2026 10:43" }
+    { source: "Sintegra", status: "Nao consultado nesta etapa", date: "25/04/2026 10:42" },
+    { source: "SEFAZ", status: "Nao consultado nesta etapa", date: "25/04/2026 10:43" }
   ]
 };

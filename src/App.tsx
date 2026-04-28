@@ -58,6 +58,10 @@ function formatHistoryDate(value: string) {
   }).format(date);
 }
 
+function findField(fields: Field[], label: string) {
+  return fields.find((field) => field.label === label)?.value || "Nao informado";
+}
+
 function App() {
   const [company, setCompany] = useState<Company | null>(null);
   const [history, setHistory] = useState<ConsultationHistoryItem[]>([]);
@@ -85,6 +89,21 @@ function App() {
         : [],
     [company]
   );
+  const fiscalSummary = useMemo(() => {
+    if (!company) {
+      return {
+        status: "Aguardando consulta",
+        detail: "Os dados fiscais serao avaliados apos informar um CNPJ.",
+        source: "Sem fonte consultada"
+      };
+    }
+
+    return {
+      status: findField(company.fiscal, "Situacao cadastral RF"),
+      detail: `IE: ${findField(company.fiscal, "Inscricao estadual")}`,
+      source: findField(company.fiscal, "Fonte fiscal")
+    };
+  }, [company]);
 
   function notify(message = "Informacoes copiadas") {
     setToast(message);
@@ -410,12 +429,12 @@ function App() {
                       <Landmark className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div>
-                      <strong className="block">Contribuinte habilitado</strong>
-                      <span className="text-sm font-semibold text-[#484848]/72">Apto para operacoes com ICMS</span>
+                      <strong className="block">{fiscalSummary.status}</strong>
+                      <span className="text-sm font-semibold text-[#484848]/72">{fiscalSummary.source}</span>
                     </div>
                   </div>
                   <p className="text-sm font-semibold leading-relaxed text-[#484848]">
-                    Este bloco esta pronto para receber retorno de consulta SEFAZ ou Sintegra via backend.
+                    {fiscalSummary.detail}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
