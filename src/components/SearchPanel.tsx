@@ -1,5 +1,5 @@
 import { FileSearch, LoaderCircle, ShieldCheck } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { ClipboardEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { formatCnpj, isValidCnpj, onlyDigits } from "../utils/cnpj";
 import { GlassPanel } from "./GlassPanel";
 
@@ -74,6 +74,16 @@ export function SearchPanel({
     onSearch(cnpj);
   }
 
+  function updateCnpj(value: string) {
+    setCnpj(formatCnpj(value));
+    setError("");
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLInputElement>) {
+    event.preventDefault();
+    updateCnpj(event.clipboardData.getData("text"));
+  }
+
   return (
     <GlassPanel id="consulta" className={`grid gap-5 ${hasCompany ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]" : ""}`}>
       <form onSubmit={handleSubmit} className="min-w-0">
@@ -98,12 +108,10 @@ export function SearchPanel({
           <input
             id="cnpj"
             value={cnpj}
-            onChange={(event) => {
-              setCnpj(formatCnpj(event.target.value));
-              setError("");
-            }}
+            onChange={(event) => updateCnpj(event.target.value)}
+            onPaste={handlePaste}
             inputMode="numeric"
-            maxLength={18}
+            autoComplete="off"
             placeholder="00.000.000/0000-00"
             className="h-12 w-full min-w-0 rounded-xl border border-[#00c9d2]/22 bg-white/58 px-4 pr-12 text-base font-black text-[#484848] outline-none transition placeholder:text-[#484848]/42 focus:border-[#0f928c] focus:ring-4 focus:ring-[#00c9d2]/20"
           />

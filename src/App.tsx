@@ -223,17 +223,6 @@ function App() {
 
         <main className={`min-w-0 px-4 sm:px-6 lg:px-8 ${company ? "py-5" : "grid min-h-screen place-items-center py-8"}`}>
           <div className={`mx-auto grid w-full gap-5 ${company ? "max-w-[1500px]" : "max-w-[780px]"}`}>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/42 bg-white/28 px-4 text-sm font-black text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-xl transition hover:bg-white/42"
-              >
-                {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
-                {theme === "dark" ? "Dia" : "Noite"}
-              </button>
-            </div>
-
             {company ? (
             <header className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -264,6 +253,15 @@ function App() {
                     >
                       <FileJson className="h-4 w-4" aria-hidden="true" />
                       JSON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={toggleTheme}
+                      aria-label={theme === "dark" ? "Ativar modo dia" : "Ativar modo noite"}
+                      title={theme === "dark" ? "Modo dia" : "Modo noite"}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
+                    >
+                      {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
                     </button>
                   </>
                 ) : null}
