@@ -36,6 +36,8 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Scrollbar personalizada conforme o tema.
 - Dados fiscais enriquecidos com campos publicos retornados pela BrasilAPI/Receita Federal.
 - Backend com timeout de API externa, rate limit simples por IP e headers basicos de seguranca.
+- Rota `/health` para checagem simples do servidor.
+- Testes automatizados pequenos para validacao de CNPJ e rate limit.
 
 ## Como rodar
 
@@ -77,6 +79,28 @@ Para rodar com Vite em modo desenvolvimento:
 npm run dev
 ```
 
+Para rodar os testes:
+
+```powershell
+npm run test
+```
+
+## Configuracao
+
+As variaveis opcionais estao documentadas em `.env.example`:
+
+```text
+PORT=5173
+HOST=0.0.0.0
+BRASIL_API_BASE_URL=https://brasilapi.com.br/api/cnpj/v1
+CACHE_TTL_MS=600000
+UPSTREAM_TIMEOUT_MS=8000
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=40
+```
+
+Para restringir o acesso apenas a maquina local, use `HOST=127.0.0.1`. Para acesso pela rede local, mantenha `HOST=0.0.0.0`.
+
 ## Estrutura
 
 ```text
@@ -89,6 +113,10 @@ src/
 
 server/
   index.mjs         Servidor Node local, proxy de API, cache e protecoes basicas
+  config.mjs        Configuracao por variaveis de ambiente
+  cnpj.mjs          Normalizacao e validacao de CNPJ no backend
+  rateLimit.mjs     Rate limit simples por chave/IP
+  *.test.mjs        Testes automatizados com node:test
   data/             Pasta mantida para estrutura, sem historico compartilhado
 
 dist/
@@ -145,6 +173,7 @@ Atualmente o projeto nao afirma inscricao estadual ativa nem habilitacao em SEFA
 O backend aplica algumas protecoes iniciais:
 
 - valida CNPJ no servidor;
+- valida o formato minimo do payload retornado pela fonte externa;
 - limita volume de consultas por IP em uma janela curta;
 - usa timeout ao chamar a fonte externa;
 - envia headers basicos como `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` e `Referrer-Policy`;
@@ -158,5 +187,5 @@ Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor f
 - Adicionar provedores alternativos de CNPJ.
 - Criar estrutura para integracoes fiscais por UF.
 - Adicionar tela de configuracoes para tokens, provedores e tempo de cache.
-- Criar testes automatizados para validacao de CNPJ, backend e exportacao.
+- Expandir testes automatizados para backend HTTP, exportacao e fluxo visual.
 - Revisar hardening antes de qualquer publicacao externa.

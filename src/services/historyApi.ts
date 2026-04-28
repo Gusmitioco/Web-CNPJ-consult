@@ -35,7 +35,11 @@ function readLocalHistory() {
 }
 
 function writeLocalHistory(history: ConsultationHistoryItem[]) {
-  localStorage.setItem(historyKey, JSON.stringify(history.slice(0, maxHistoryItems)));
+  try {
+    localStorage.setItem(historyKey, JSON.stringify(history.slice(0, maxHistoryItems)));
+  } catch {
+    // Historico local e auxiliar; falha de storage nao deve quebrar a consulta.
+  }
 }
 
 export async function fetchConsultationHistory() {

@@ -3,18 +3,18 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
+import { config } from "./config.mjs";
+import { createRateLimiter } from "./rateLimit.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
-const port = Number(process.env.PORT || 5173);
-const host = process.env.HOST || "0.0.0.0";
 const cnpjCache = new Map();
-const rateLimit = new Map();
-const cacheTtlMs = 10 * 60 * 1000;
-const upstreamTimeoutMs = 8000;
-const rateLimitWindowMs = 60 * 1000;
-const maxRequestsPerWindow = 40;
+const rateLimiter = createRateLimiter({
+  windowMs: config.rateLimitWindowMs,
+  maxRequests: config.maxRequestsPerWindow
+});
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -42,53 +42,12 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
-function onlyDigits(value) {
-  return String(value || "").replace(/\D/g, "");
-}
-
-function isValidCnpj(value) {
-  const cnpj = onlyDigits(value);
-
-  if (cnpj.length !== 14 || /^(\d)\1+$/.test(cnpj)) {
-    return false;
-  }
-
-  const calcDigit = (base) => {
-    let weight = base.length - 7;
-    let sum = 0;
-
-    for (const digit of base) {
-      sum += Number(digit) * weight;
-      weight -= 1;
-      if (weight < 2) weight = 9;
-    }
-
-    const rest = sum % 11;
-    return rest < 2 ? 0 : 11 - rest;
-  };
-
-  const first = calcDigit(cnpj.slice(0, 12));
-  const second = calcDigit(cnpj.slice(0, 12) + first);
-
-  return cnpj.endsWith(`${first}${second}`);
-}
-
 function getClientIp(request) {
   return request.socket.remoteAddress || "unknown";
 }
 
 function isRateLimited(request) {
-  const now = Date.now();
-  const key = getClientIp(request);
-  const current = rateLimit.get(key);
-
-  if (!current || current.expiresAt <= now) {
-    rateLimit.set(key, { count: 1, expiresAt: now + rateLimitWindowMs });
-    return false;
-  }
-
-  current.count += 1;
-  return current.count > maxRequestsPerWindow;
+  return rateLimiter.isLimited(getClientIp(request));
 }
 
 async function handleCnpjRequest(request, response, pathname) {
@@ -111,10 +70,10 @@ async function handleCnpjRequest(request, response, pathname) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), config.upstreamTimeoutMs);
 
   try {
-    const upstream = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+    const upstream = await fetch(`${config.brasilApiBaseUrl}/${cnpj}`, {
       signal: controller.signal,
       headers: {
         accept: "application/json",
@@ -131,8 +90,13 @@ async function handleCnpjRequest(request, response, pathname) {
       return;
     }
 
+    if (!hasRequiredBrasilApiPayload(payload)) {
+      sendJson(response, 502, { message: "A fonte publica retornou dados em formato inesperado." });
+      return;
+    }
+
     cnpjCache.set(cnpj, {
-      expiresAt: Date.now() + cacheTtlMs,
+      expiresAt: Date.now() + config.cacheTtlMs,
       payload
     });
     sendJson(response, 200, payload);
@@ -176,15 +140,25 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/health") {
+    sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.writeHead(405, { ...securityHeaders, "content-type": "text/plain; charset=utf-8" });
     response.end("Metodo nao permitido.");
     return;
   }
 
+  if (url.pathname.startsWith("/api/")) {
+    sendJson(response, 404, { message: "Rota de API nao encontrada." });
+    return;
+  }
+
   await serveStatic(request, response, url.pathname);
 });
 
-server.listen(port, host, () => {
-  console.log(`Servidor pronto em http://localhost:${port}/`);
+server.listen(config.port, config.host, () => {
+  console.log(`Servidor pronto em http://localhost:${config.port}/`);
 });
