@@ -15,6 +15,13 @@ export type HistoryItem = {
   date: string;
 };
 
+export type SourceStatus = {
+  name: string;
+  ok: boolean;
+  status: string;
+  message: string;
+};
+
 export type Company = {
   cnpj: string;
   legalName: string;
@@ -30,4 +37,5 @@ export type Company = {
   fiscal: Field[];
   partners: Partner[];
   history: HistoryItem[];
+  sources?: SourceStatus[];
 };

@@ -1,4 +1,5 @@
-import type { Company } from "../types";
+import type { Company, SourceStatus } from "../types";
+import { hasSefazBaRegistration, mapSefazBaToCompany, mergeCompanyWithSefazBa, type SefazBaResponse } from "./sefazBaApi";
 import { formatCnpj, onlyDigits } from "../utils/cnpj";
 
 type BrasilApiCnae = {
@@ -51,6 +52,45 @@ type BrasilApiCompany = {
   data_exclusao_do_mei?: string;
   qsa?: BrasilApiPartner[];
 };
+
+type CompanyApiResponse = {
+  cnpj: string;
+  publicData: BrasilApiCompany | null;
+  fiscalData: SefazBaResponse | null;
+  sources?: {
+    brasilApi?: {
+      ok: boolean;
+      status: number;
+      message?: string;
+    };
+    sefazBa?: {
+      ok: boolean;
+      configured?: boolean;
+      status: number;
+      message?: string;
+      code?: string;
+    };
+  };
+};
+
+function mapSourceStatuses(sources?: CompanyApiResponse["sources"]): SourceStatus[] {
+  if (!sources) return [];
+
+  return [
+    {
+      name: "BrasilAPI",
+      ok: Boolean(sources.brasilApi?.ok),
+      status: sources.brasilApi?.ok ? "Concluida" : "Falha parcial",
+      message: sources.brasilApi?.message || "Sem retorno informado."
+    },
+    {
+      name: "SEFAZ-BA",
+      ok: Boolean(sources.sefazBa?.ok),
+      status: sources.sefazBa?.ok ? "Concluida" : sources.sefazBa?.configured === false ? "Nao configurada" : "Falha parcial",
+      message: sources.sefazBa?.message || "Sem retorno informado."
+    }
+  ];
+}
 
 function formatDate(value?: string) {
   if (!value) return "Nao informado";
@@ -178,7 +218,7 @@ function mapBrasilApiToCompany(data: BrasilApiCompany): Company {
 
 export async function fetchCompanyByCnpj(cnpj: string) {
   const digits = onlyDigits(cnpj);
-  const response = await fetch(`/api/cnpj/${digits}`);
+  const response = await fetch(`/api/company/${digits}`);
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { message?: string };
@@ -190,6 +230,20 @@ export async function fetchCompanyByCnpj(cnpj: string) {
     throw new Error(payload.message || "Nao foi possivel consultar o CNPJ agora.");
   }
 
-  const data = (await response.json()) as BrasilApiCompany;
-  return mapBrasilApiToCompany(data);
+  const data = (await response.json()) as CompanyApiResponse;
+
+  if (data.publicData) {
+    const company = mapBrasilApiToCompany(data.publicData);
+    const merged = data.fiscalData ? mergeCompanyWithSefazBa(company, data.fiscalData) : company;
+    return { ...merged, sources: mapSourceStatuses(data.sources) };
+  }
+
+  if (hasSefazBaRegistration(data.fiscalData)) {
+    return {
+      ...mapSefazBaToCompany(data.fiscalData, data.sources?.brasilApi?.message),
+      sources: mapSourceStatuses(data.sources)
+    };
+  }
+
+  throw new Error(data.sources?.brasilApi?.message || data.sources?.sefazBa?.message || "Nao foi possivel consultar o CNPJ agora.");
 }

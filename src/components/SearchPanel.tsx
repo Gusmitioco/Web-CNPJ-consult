@@ -89,26 +89,33 @@ export function SearchPanel({
   }
 
   return (
-    <GlassPanel id="consulta" className={`grid gap-5 ${hasCompany ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]" : ""}`}>
+    <GlassPanel
+      id="consulta"
+      className={`grid gap-5 ${
+        hasCompany
+          ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]"
+          : "relative overflow-hidden border-[#00c9d2]/38 bg-white/36 p-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_30px_80px_rgba(0,100,101,0.2)] sm:p-8"
+      }`}
+    >
       <form onSubmit={handleSubmit} className="min-w-0">
         <div className={`mb-5 flex gap-3 ${hasCompany ? "items-center" : "flex-col items-center text-center"}`}>
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#006465] text-white">
-            <FileSearch className="h-5 w-5" aria-hidden="true" />
+          <div className={`${hasCompany ? "h-11 w-11" : "h-14 w-14"} grid shrink-0 place-items-center rounded-xl bg-[#006465] text-white shadow-[0_16px_34px_rgba(0,100,101,0.28)]`}>
+            <FileSearch className={hasCompany ? "h-5 w-5" : "h-6 w-6"} aria-hidden="true" />
           </div>
           <div>
             <p className="text-xs font-black uppercase tracking-[0.09em] text-[#0f928c]">
               Consulta cadastral
             </p>
-            <h1 className={`${hasCompany ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl"} font-black leading-tight text-[#484848]`}>
+            <h1 className={`${hasCompany ? "text-2xl sm:text-3xl" : "text-4xl sm:text-5xl"} font-black leading-tight text-[#484848]`}>
               {hasCompany ? "Painel de dados do cliente" : "Informe um CNPJ para iniciar"}
             </h1>
           </div>
         </div>
 
-        <label htmlFor="cnpj" className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-[#006465]">
+        <label htmlFor="cnpj" className={`mb-2 block text-xs font-black uppercase tracking-[0.08em] text-[#006465] ${hasCompany ? "" : "text-center"}`}>
           CNPJ
         </label>
-        <div className="relative">
+        <div className={`relative ${hasCompany ? "" : "mx-auto max-w-xl"}`}>
           <input
             id="cnpj"
             value={cnpj}
@@ -117,13 +124,13 @@ export function SearchPanel({
             inputMode="numeric"
             autoComplete="off"
             placeholder="00.000.000/0000-00"
-            className="h-12 w-full min-w-0 rounded-xl border border-[#00c9d2]/22 bg-white/58 px-4 pr-12 text-base font-black text-[#484848] outline-none transition placeholder:text-[#484848]/42 focus:border-[#0f928c] focus:ring-4 focus:ring-[#00c9d2]/20"
+            className={`${hasCompany ? "h-12 text-base" : "h-14 text-lg"} w-full min-w-0 rounded-xl border border-[#00c9d2]/30 bg-white/64 px-4 pr-12 text-center font-black text-[#484848] shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_14px_34px_rgba(0,100,101,0.1)] outline-none transition placeholder:text-[#484848]/42 focus:border-[#0f928c] focus:ring-4 focus:ring-[#00c9d2]/20`}
           />
           {isLoading ? (
             <LoaderCircle className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-[#006465]" aria-hidden="true" />
           ) : null}
         </div>
-        <p className="mt-2 min-h-5 text-sm font-bold text-[#006465]">{error || queryError}</p>
+        <p className={`mt-2 min-h-5 text-sm font-bold text-[#006465] ${hasCompany ? "" : "text-center"}`}>{error || queryError}</p>
       </form>
 
       {hasCompany ? <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">

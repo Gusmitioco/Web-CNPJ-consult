@@ -1,4 +1,4 @@
-import { DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sparkles, Sun } from "lucide-react";
+import { CircleCheck, DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sparkles, Sun, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyButton } from "./components/CopyButton";
 import { FieldItem } from "./components/FieldItem";
@@ -9,7 +9,6 @@ import { SectionCard } from "./components/SectionCard";
 import { navItems } from "./components/Sidebar";
 import { fetchCompanyByCnpj } from "./services/cnpjApi";
 import { fetchConsultationHistory, saveConsultationHistory, type ConsultationHistoryItem } from "./services/historyApi";
-import { fetchSefazBaByCnpj, hasSefazBaRegistration, mapSefazBaToCompany, mergeCompanyWithSefazBa } from "./services/sefazBaApi";
 import type { Company, Field } from "./types";
 import { exportCompanyJson, exportCompanyPdf } from "./utils/exportCompany";
 
@@ -142,30 +141,11 @@ function App() {
     setQueryError("");
 
     try {
-      const [publicResult, sefazResult] = await Promise.allSettled([fetchCompanyByCnpj(cnpj), fetchSefazBaByCnpj(cnpj)]);
-      const sefazData = sefazResult.status === "fulfilled" ? sefazResult.value : null;
-
-      if (publicResult.status === "fulfilled") {
-        const result = sefazData ? mergeCompanyWithSefazBa(publicResult.value, sefazData) : publicResult.value;
-        setCompany(result);
-        setLastQuery(nowLabel());
-        setHistory(saveConsultationHistory(result));
-        notify(hasSefazBaRegistration(sefazData) ? "Consulta carregada com SEFAZ-BA" : "Consulta carregada");
-        return;
-      }
-
-      if (hasSefazBaRegistration(sefazData)) {
-        const brasilApiMessage = publicResult.reason instanceof Error ? publicResult.reason.message : "Nao retornado pela fonte publica";
-        const result = mapSefazBaToCompany(sefazData, brasilApiMessage);
-        setCompany(result);
-        setLastQuery(nowLabel());
-        setHistory(saveConsultationHistory(result));
-        notify("Consulta carregada pela SEFAZ-BA");
-        return;
-      }
-
-      const error = publicResult.reason instanceof Error ? publicResult.reason : sefazResult.status === "rejected" ? sefazResult.reason : null;
-      throw error instanceof Error ? error : new Error("Nao foi possivel consultar o CNPJ.");
+      const result = await fetchCompanyByCnpj(cnpj);
+      setCompany(result);
+      setLastQuery(nowLabel());
+      setHistory(saveConsultationHistory(result));
+      notify("Consulta carregada");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel consultar o CNPJ.";
       setQueryError(message);
@@ -279,7 +259,7 @@ function App() {
       {company ? <MobileNav activeSection={activeSection} onNavigate={handleNavigate} /> : null}
 
         <main className={`min-w-0 px-4 sm:px-6 lg:px-8 ${company ? "py-5" : "grid min-h-screen place-items-center py-8"}`}>
-          <div className={`mx-auto grid w-full gap-5 ${company ? "max-w-[1500px]" : "max-w-[780px]"}`}>
+          <div className={`mx-auto grid w-full gap-5 ${company ? "max-w-[1500px]" : "max-w-[840px]"}`}>
             {company ? (
             <header className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -343,17 +323,17 @@ function App() {
                   Consulte dados publicos de cadastro, endereco, atividades economicas e socios por CNPJ.
                 </p>
                 {history.length ? (
-                  <GlassPanel className="mx-auto grid w-full max-w-2xl gap-3">
+                  <GlassPanel className="mx-auto grid w-full max-w-xl gap-3 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.09em] text-[#0f928c]">
                           Historico
                         </p>
-                        <h2 className="text-base font-black">Ultimas consultas</h2>
+                        <h2 className="text-base font-black">Ultimos CNPJs</h2>
                       </div>
                     </div>
                     <div className="grid gap-2">
-                      {history.slice(0, 5).map((item) => (
+                      {history.slice(0, 2).map((item) => (
                         <button
                           key={`${item.cnpj}-${item.queriedAt}`}
                           type="button"
@@ -394,24 +374,32 @@ function App() {
                     <p className="mb-1 text-[0.7rem] font-black uppercase tracking-[0.09em] text-[#0f928c]">
                       Saude da consulta
                     </p>
-                    <h2 className="text-base font-black">Conectores planejados</h2>
+                    <h2 className="text-base font-black">Fontes da consulta</h2>
                   </div>
                   <RefreshCw className="h-5 w-5 text-[#0f928c]" aria-hidden="true" />
                 </div>
 
-                {[
-                  ["Receita Federal", "Cadastro basico e QSA", "Pronto para API"],
-                  ["SEFAZ", "Inscricao estadual e habilitacoes", "Requer certificado"],
-                  ["Sintegra", "Consulta estadual complementar", "Ideal via provedor fiscal"]
-                ].map(([name, description, status]) => (
-                  <div key={name} className="rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_22px_rgba(0,100,101,0.08)] backdrop-blur-md">
+                {(company.sources?.length ? company.sources : [
+                  { name: "BrasilAPI", ok: true, status: "Concluida", message: "Cadastro publico consultado." },
+                  { name: "SEFAZ-BA", ok: false, status: "Nao retornada", message: "Fonte fiscal sem retorno nesta consulta." }
+                ]).map((source) => (
+                  <div key={source.name} className="rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_22px_rgba(0,100,101,0.08)] backdrop-blur-md">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <strong className="block text-sm">{name}</strong>
-                        <span className="mt-1 block text-sm font-semibold text-[#484848]/72">{description}</span>
+                        <strong className="flex items-center gap-2 text-sm">
+                          {source.ok ? (
+                            <CircleCheck className="h-4 w-4 text-[#0f928c]" aria-hidden="true" />
+                          ) : (
+                            <TriangleAlert className="h-4 w-4 text-[#006465]" aria-hidden="true" />
+                          )}
+                          {source.name}
+                        </strong>
+                        <span className="mt-1 block text-sm font-semibold text-[#484848]/72">{source.message}</span>
                       </div>
-                      <span className="rounded-full bg-[#beee3b]/55 px-3 py-1 text-xs font-black text-[#006465]">
-                        {status}
+                      <span className={`rounded-full px-3 py-1 text-xs font-black ${
+                        source.ok ? "bg-[#beee3b]/55 text-[#006465]" : "bg-[#00c9d2]/13 text-[#006465]"
+                      }`}>
+                        {source.status}
                       </span>
                     </div>
                   </div>

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { recordConsultation } from "./auditLog.mjs";
 import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
 import { config } from "./config.mjs";
 import { createRateLimiter } from "./rateLimit.mjs";
@@ -12,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const cnpjCache = new Map();
+const companyCache = new Map();
 const rateLimiter = createRateLimiter({
   windowMs: config.rateLimitWindowMs,
   maxRequests: config.maxRequestsPerWindow
@@ -51,23 +53,42 @@ function isRateLimited(request) {
   return rateLimiter.isLimited(getClientIp(request));
 }
 
-async function handleCnpjRequest(request, response, pathname) {
-  const cnpj = onlyDigits(pathname.replace("/api/cnpj/", ""));
+function sourceSummary(result) {
+  return {
+    ok: Boolean(result.ok),
+    status: result.status,
+    message: result.message,
+    code: result.code,
+    configured: result.configured
+  };
+}
+
+async function recordConsultationSafe(request, details) {
+  try {
+    await recordConsultation(request, details);
+  } catch {
+    // O log local e auxiliar; falha de escrita nao deve bloquear a consulta.
+  }
+}
+
+function validateApiRequest(request, response, cnpj) {
+  if (!isValidCnpj(cnpj)) {
+    sendJson(response, 400, { message: "Informe um CNPJ valido com 14 digitos." });
+    return false;
+  }
 
   if (isRateLimited(request)) {
     sendJson(response, 429, { message: "Muitas consultas em pouco tempo. Aguarde um minuto e tente novamente." });
-    return;
+    return false;
   }
 
-  if (!isValidCnpj(cnpj)) {
-    sendJson(response, 400, { message: "Informe um CNPJ valido com 14 digitos." });
-    return;
-  }
+  return true;
+}
 
+async function fetchBrasilApiPayload(cnpj) {
   const cached = cnpjCache.get(cnpj);
   if (cached && cached.expiresAt > Date.now()) {
-    sendJson(response, 200, cached.payload);
-    return;
+    return { ok: true, status: 200, payload: cached.payload, message: "Dados publicos retornados do cache." };
   }
 
   const controller = new AbortController();
@@ -85,58 +106,172 @@ async function handleCnpjRequest(request, response, pathname) {
     const payload = await upstream.json().catch(() => ({}));
 
     if (!upstream.ok) {
-      sendJson(response, upstream.status, {
+      return {
+        ok: false,
+        status: upstream.status,
         message: payload.message || payload.name || "Nao foi possivel consultar o CNPJ."
-      });
-      return;
+      };
     }
 
     if (!hasRequiredBrasilApiPayload(payload)) {
-      sendJson(response, 502, { message: "A fonte publica retornou dados em formato inesperado." });
-      return;
+      return { ok: false, status: 502, message: "A fonte publica retornou dados em formato inesperado." };
     }
 
     cnpjCache.set(cnpj, {
       expiresAt: Date.now() + config.cacheTtlMs,
       payload
     });
-    sendJson(response, 200, payload);
+    return { ok: true, status: 200, payload, message: "Dados publicos retornados." };
   } catch (error) {
     const message =
       error?.name === "AbortError"
         ? "Tempo limite excedido ao consultar a fonte publica."
         : "Falha ao conectar com a fonte publica de CNPJ.";
-    sendJson(response, 502, { message });
+    return { ok: false, status: 502, message };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function handleSefazBahiaRequest(request, response, pathname) {
-  const cnpj = onlyDigits(pathname.replace("/api/fiscal/ba/", ""));
-
-  if (isRateLimited(request)) {
-    sendJson(response, 429, { message: "Muitas consultas em pouco tempo. Aguarde um minuto e tente novamente." });
-    return;
-  }
-
-  if (!isValidCnpj(cnpj)) {
-    sendJson(response, 400, { message: "Informe um CNPJ valido com 14 digitos." });
-    return;
-  }
-
+async function fetchSefazBahiaPayload(cnpj) {
   if (!hasSefazBaConfig()) {
-    sendJson(response, 503, { message: "Consulta SEFAZ-BA nao configurada neste ambiente." });
-    return;
+    return { ok: false, status: 503, configured: false, message: "Consulta SEFAZ-BA nao configurada neste ambiente." };
   }
 
   try {
-    const result = await consultaCadastroBahia(cnpj);
-    sendJson(response, 200, result);
+    const payload = await consultaCadastroBahia(cnpj);
+    return { ok: true, status: 200, configured: true, payload, message: payload.statusMessage || "Consulta SEFAZ-BA concluida." };
   } catch (error) {
     const details = classifySefazError(error);
-    sendJson(response, 502, details);
+    return { ok: false, status: 502, configured: true, ...details };
   }
+}
+
+async function handleCnpjRequest(request, response, pathname) {
+  const cnpj = onlyDigits(pathname.replace("/api/cnpj/", ""));
+
+  if (!validateApiRequest(request, response, cnpj)) {
+    return;
+  }
+
+  const result = await fetchBrasilApiPayload(cnpj);
+  if (!result.ok) {
+    await recordConsultationSafe(request, {
+      cnpj,
+      route: "cnpj",
+      result: "error",
+      sources: { brasilApi: sourceSummary(result) }
+    });
+    sendJson(response, result.status, { message: result.message });
+    return;
+  }
+
+  await recordConsultationSafe(request, {
+    cnpj,
+    route: "cnpj",
+    result: "success",
+    sources: { brasilApi: sourceSummary(result) }
+  });
+  sendJson(response, 200, result.payload);
+}
+
+async function handleSefazBahiaRequest(request, response, pathname) {
+  const cnpj = onlyDigits(pathname.replace("/api/fiscal/ba/", ""));
+
+  if (!validateApiRequest(request, response, cnpj)) {
+    return;
+  }
+
+  const result = await fetchSefazBahiaPayload(cnpj);
+  if (!result.ok) {
+    await recordConsultationSafe(request, {
+      cnpj,
+      route: "sefaz-ba",
+      result: "error",
+      sources: { sefazBa: sourceSummary(result) }
+    });
+    sendJson(response, result.status, { code: result.code, message: result.message });
+    return;
+  }
+
+  await recordConsultationSafe(request, {
+    cnpj,
+    route: "sefaz-ba",
+    result: "success",
+    sources: { sefazBa: sourceSummary(result) }
+  });
+  sendJson(response, 200, result.payload);
+}
+
+async function handleCompanyRequest(request, response, pathname) {
+  const cnpj = onlyDigits(pathname.replace("/api/company/", ""));
+
+  if (!validateApiRequest(request, response, cnpj)) {
+    return;
+  }
+
+  const cached = companyCache.get(cnpj);
+  if (cached && cached.expiresAt > Date.now()) {
+    await recordConsultationSafe(request, {
+      cnpj,
+      route: "company",
+      result: "success-cache",
+      sources: cached.payload.sources
+    });
+    sendJson(response, 200, cached.payload);
+    return;
+  }
+
+  const [publicData, fiscalData] = await Promise.all([fetchBrasilApiPayload(cnpj), fetchSefazBahiaPayload(cnpj)]);
+  const hasFiscalRegistration = Boolean(fiscalData.ok && fiscalData.payload?.registrations?.length);
+
+  if (!publicData.ok && !hasFiscalRegistration) {
+    await recordConsultationSafe(request, {
+      cnpj,
+      route: "company",
+      result: "error",
+      sources: {
+        brasilApi: sourceSummary(publicData),
+        sefazBa: sourceSummary(fiscalData)
+      }
+    });
+    sendJson(response, publicData.status || fiscalData.status || 502, {
+      message: publicData.message || fiscalData.message || "Nao foi possivel consultar o CNPJ."
+    });
+    return;
+  }
+
+  const payload = {
+    cnpj,
+    publicData: publicData.ok ? publicData.payload : null,
+    fiscalData: fiscalData.ok ? fiscalData.payload : null,
+    sources: {
+      brasilApi: {
+        ok: publicData.ok,
+        status: publicData.status,
+        message: publicData.message
+      },
+      sefazBa: {
+        ok: fiscalData.ok,
+        configured: fiscalData.configured,
+        status: fiscalData.status,
+        message: fiscalData.message,
+        code: fiscalData.code
+      }
+    }
+  };
+
+  companyCache.set(cnpj, {
+    expiresAt: Date.now() + config.cacheTtlMs,
+    payload
+  });
+  await recordConsultationSafe(request, {
+    cnpj,
+    route: "company",
+    result: publicData.ok && hasFiscalRegistration ? "success-full" : "success-partial",
+    sources: payload.sources
+  });
+  sendJson(response, 200, payload);
 }
 
 async function serveStatic(request, response, pathname) {
@@ -165,6 +300,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname.startsWith("/api/cnpj/")) {
     await handleCnpjRequest(request, response, url.pathname);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/api/company/")) {
+    await handleCompanyRequest(request, response, url.pathname);
     return;
   }
 
