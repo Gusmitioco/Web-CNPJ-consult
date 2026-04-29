@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
 import { config } from "./config.mjs";
 import { createRateLimiter } from "./rateLimit.mjs";
+import { classifySefazError, consultaCadastroBahia, hasSefazBaConfig } from "./sefazBa.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -111,6 +112,33 @@ async function handleCnpjRequest(request, response, pathname) {
   }
 }
 
+async function handleSefazBahiaRequest(request, response, pathname) {
+  const cnpj = onlyDigits(pathname.replace("/api/fiscal/ba/", ""));
+
+  if (isRateLimited(request)) {
+    sendJson(response, 429, { message: "Muitas consultas em pouco tempo. Aguarde um minuto e tente novamente." });
+    return;
+  }
+
+  if (!isValidCnpj(cnpj)) {
+    sendJson(response, 400, { message: "Informe um CNPJ valido com 14 digitos." });
+    return;
+  }
+
+  if (!hasSefazBaConfig()) {
+    sendJson(response, 503, { message: "Consulta SEFAZ-BA nao configurada neste ambiente." });
+    return;
+  }
+
+  try {
+    const result = await consultaCadastroBahia(cnpj);
+    sendJson(response, 200, result);
+  } catch (error) {
+    const details = classifySefazError(error);
+    sendJson(response, 502, details);
+  }
+}
+
 async function serveStatic(request, response, pathname) {
   const cleanPath = pathname === "/" ? "/index.html" : pathname;
   const requestedPath = path.normalize(path.join(distDir, cleanPath));
@@ -137,6 +165,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname.startsWith("/api/cnpj/")) {
     await handleCnpjRequest(request, response, url.pathname);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/api/fiscal/ba/")) {
+    await handleSefazBahiaRequest(request, response, url.pathname);
     return;
   }
 

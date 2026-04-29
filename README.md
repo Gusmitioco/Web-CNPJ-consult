@@ -38,6 +38,9 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Backend com timeout de API externa, rate limit simples por IP e headers basicos de seguranca.
 - Rota `/health` para checagem simples do servidor.
 - Testes automatizados pequenos para validacao de CNPJ e rate limit.
+- Rota inicial para consulta cadastral SEFAZ-BA via certificado A1: `/api/fiscal/ba/:cnpj`.
+- Tela principal consumindo a SEFAZ-BA para inscricao estadual, situacao da IE, regime e CNAE estadual quando o certificado estiver configurado.
+- Fallback parcial pela SEFAZ-BA quando a BrasilAPI nao retorna o CNPJ, mantendo aviso no historico da consulta.
 
 ## Como rodar
 
@@ -97,9 +100,17 @@ CACHE_TTL_MS=600000
 UPSTREAM_TIMEOUT_MS=8000
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=40
+SEFAZ_BA_ENDPOINT=https://nfe.sefaz.ba.gov.br/webservices/CadConsultaCadastro4/CadConsultaCadastro4.asmx
+SEFAZ_CERT_PATH=cert/certificado.pfx
+SEFAZ_CERT_PASSWORD=troque-esta-senha
+SEFAZ_CA_PATH=
+SEFAZ_REJECT_UNAUTHORIZED=true
+SEFAZ_TIMEOUT_MS=12000
 ```
 
 Para restringir o acesso apenas a maquina local, use `HOST=127.0.0.1`. Para acesso pela rede local, mantenha `HOST=0.0.0.0`.
+
+Nunca envie `.env`, certificado `.pfx/.p12` ou senha para o GitHub. O backend le essas configuracoes localmente e o frontend nunca recebe o certificado.
 
 ## Estrutura
 
@@ -116,6 +127,7 @@ server/
   config.mjs        Configuracao por variaveis de ambiente
   cnpj.mjs          Normalizacao e validacao de CNPJ no backend
   rateLimit.mjs     Rate limit simples por chave/IP
+  sefazBa.mjs       Cliente SOAP inicial para Consulta Cadastro SEFAZ-BA
   *.test.mjs        Testes automatizados com node:test
   data/             Pasta mantida para estrutura, sem historico compartilhado
 
@@ -152,7 +164,17 @@ Resumo:
 - Build 15: historico persistente e tema dia/noite.
 - Build 16: modo noite premium glassmorphism.
 
-Depois da build 16, os commits passaram a documentar incrementos menores, incluindo exportacao JSON/PDF, historico local por navegador, scrollbar personalizada, melhorias na formatacao do CNPJ, dados fiscais mais completos e protecoes basicas no backend.
+Depois da build 16, os commits passaram a documentar incrementos menores. A partir daqui o historico usa o nome **marcos**, porque cada etapa representa uma melhoria funcional ou tecnica do MVP.
+
+### Marcos pos-build 16
+
+- Marco 17: exportacao JSON/PDF, historico local por navegador e scrollbar personalizada.
+- Marco 18: formatacao melhorada do CNPJ colado/digitado e botao de tema reposicionado.
+- Marco 19: dados fiscais mais completos a partir da BrasilAPI/Receita Federal e protecoes basicas no backend.
+- Marco 20: correcoes de seguranca, rotas, configuracao por ambiente, testes automatizados e dependencias fixadas.
+- Marco 21: integracao inicial da Consulta Cadastro SEFAZ-BA via certificado A1 no backend.
+- Marco 22: cadeia CA ICP-Brasil local para validar TLS da SEFAZ-BA com `SEFAZ_REJECT_UNAUTHORIZED=true`.
+- Marco 23: frontend integrado a SEFAZ-BA, com merge de dados fiscais e fallback quando a fonte publica nao encontra o CNPJ.
 
 ## Observacoes sobre APIs e raspagem
 
@@ -168,6 +190,62 @@ Para dados fiscais mais sensiveis ou estaduais, o caminho adequado e usar uma AP
 
 Atualmente o projeto nao afirma inscricao estadual ativa nem habilitacao em SEFAZ/Sintegra quando esses dados nao foram consultados. A interface mostra esses pontos como pendentes para evitar conclusoes fiscais incorretas.
 
+## Consulta SEFAZ-BA
+
+A integracao inicial com SEFAZ-BA fica somente no backend:
+
+```text
+GET /api/fiscal/ba/:cnpj
+```
+
+Ela usa certificado A1 por mTLS e monta a chamada SOAP para o servico `CadConsultaCadastro4`.
+
+Quando configurada, a tela principal tambem chama essa rota local durante a consulta do CNPJ. Se a BrasilAPI retornar dados, a tela combina o cadastro publico com os campos fiscais da SEFAZ-BA. Se a BrasilAPI nao encontrar o cadastro, mas a SEFAZ-BA retornar inscricao estadual, a interface mostra um cadastro parcial com a fonte fiscal identificada no historico.
+
+Campos que podem aparecer a partir da SEFAZ-BA:
+
+- inscricao estadual;
+- situacao da IE;
+- regime de apuracao;
+- CNAE estadual retornado pela SEFAZ;
+- status e codigo da consulta cadastral.
+
+Os campos que a SEFAZ-BA nao retorna, como QSA, capital social e dados completos da Receita Federal, continuam marcados como nao informados pela fonte.
+
+Configuracao local esperada:
+
+```text
+SEFAZ_CERT_PATH=caminho/para/certificado.pfx
+SEFAZ_CERT_PASSWORD=senha-do-certificado
+SEFAZ_CA_PATH=certi/cadeia-icp-brasil.pem
+SEFAZ_REJECT_UNAUTHORIZED=true
+```
+
+Se o certificado nao estiver configurado, a rota retorna `503` com mensagem segura. Se a SEFAZ estiver fora, lenta ou recusar a conexao, a rota retorna `502` sem expor certificado, senha ou XML completo.
+
+Para montar a cadeia CA local, foi usado o arquivo oficial "Cadeia Vigente" do ITI:
+
+```text
+https://www.gov.br/iti/pt-br/assuntos/repositorio/certificados-das-acs-da-icp-brasil-arquivo-unico-compactado
+```
+
+O ZIP foi extraido em pasta ignorada pelo Git e os certificados foram concatenados em:
+
+```text
+certi/cadeia-icp-brasil.pem
+```
+
+Esse arquivo tambem nao deve ser enviado ao GitHub.
+
+Erros conhecidos nesta etapa:
+
+- `SEFAZ_CERT_UNSUPPORTED_PFX`: o PFX usa formato antigo/incompativel com o OpenSSL do Node. Reexporte o certificado em formato moderno ou rode o Node com `NODE_OPTIONS=--openssl-legacy-provider`.
+- `SEFAZ_TLS_CA`: a cadeia de certificados da SEFAZ nao foi reconhecida localmente. Configure um arquivo de CA em `SEFAZ_CA_PATH`.
+- `SEFAZ_CERT_PASSWORD`: senha do PFX incorreta ou certificado nao abriu.
+- `SEFAZ_CERT_NOT_FOUND`: caminho do certificado incorreto.
+
+Evite usar `SEFAZ_REJECT_UNAUTHORIZED=false`; isso deve servir apenas para diagnostico local temporario, nunca como configuracao padrao.
+
 ## Seguranca
 
 O backend aplica algumas protecoes iniciais:
@@ -178,6 +256,7 @@ O backend aplica algumas protecoes iniciais:
 - usa timeout ao chamar a fonte externa;
 - envia headers basicos como `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options` e `Referrer-Policy`;
 - nao persiste historico de consultas no servidor.
+- mantem certificado e senha apenas no backend local, via `.env`/variaveis de ambiente.
 
 Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor fora da rede local, ainda seria necessario revisar autenticacao, logs, observabilidade, HTTPS, controle de origem, limite de payloads e politica de uso das APIs.
 

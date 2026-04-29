@@ -8,6 +8,8 @@ dist/
 *.log
 .server.log
 .server.err
+.server-*.log
+.server-*.err
 .vite-dev.log
 .vite-dev.err
 .vite-preview.log
@@ -22,6 +24,15 @@ vite.config.d.ts
 .env
 .env.*
 !.env.example
+
+# Local certificates and private keys
+cert/
+certi/
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
 
 # OS/editor files
 .DS_Store

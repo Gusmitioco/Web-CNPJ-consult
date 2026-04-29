@@ -9,6 +9,8 @@ type SearchPanelProps = {
   lastQuery: string;
   hasCompany?: boolean;
   queryError?: string;
+  companyStatus?: string;
+  stateRegistration?: string;
   onSearch: (cnpj: string) => void | Promise<void>;
 };
 
@@ -18,6 +20,8 @@ export function SearchPanel({
   lastQuery,
   hasCompany = false,
   queryError = "",
+  companyStatus = "",
+  stateRegistration = "",
   onSearch
 }: SearchPanelProps) {
   const [cnpj, setCnpj] = useState(initialCnpj);
@@ -124,8 +128,8 @@ export function SearchPanel({
 
       {hasCompany ? <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
         {[
-          ["Status RF", hasCompany ? "Dados carregados" : "Aguardando consulta", "text-[#0f928c]"],
-          ["Inscricao estadual", "Etapa fiscal posterior", "text-[#484848]"],
+          ["Status cadastro", companyStatus || "Dados carregados", "text-[#0f928c]"],
+          ["Inscricao estadual", stateRegistration || "Nao retornada", stateRegistration ? "text-[#0f928c]" : "text-[#484848]"],
           ["Ultima consulta", hasCompany ? lastQuery : "Nenhuma consulta", "text-[#484848]"]
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_12px_26px_rgba(0,100,101,0.1)] backdrop-blur-md">
@@ -133,7 +137,7 @@ export function SearchPanel({
               {label}
             </span>
             <strong className={`mt-1 flex items-center gap-2 text-sm font-black ${color}`}>
-              {label === "Status RF" && <ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+              {label === "Status cadastro" && <ShieldCheck className="h-4 w-4" aria-hidden="true" />}
               {value}
             </strong>
           </div>

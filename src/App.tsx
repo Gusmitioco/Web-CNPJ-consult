@@ -9,6 +9,7 @@ import { SectionCard } from "./components/SectionCard";
 import { navItems } from "./components/Sidebar";
 import { fetchCompanyByCnpj } from "./services/cnpjApi";
 import { fetchConsultationHistory, saveConsultationHistory, type ConsultationHistoryItem } from "./services/historyApi";
+import { fetchSefazBaByCnpj, hasSefazBaRegistration, mapSefazBaToCompany, mergeCompanyWithSefazBa } from "./services/sefazBaApi";
 import type { Company, Field } from "./types";
 import { exportCompanyJson, exportCompanyPdf } from "./utils/exportCompany";
 
@@ -62,6 +63,20 @@ function findField(fields: Field[], label: string) {
   return fields.find((field) => field.label === label)?.value || "Nao informado";
 }
 
+function findFirstField(fields: Field[], labels: string[]) {
+  for (const label of labels) {
+    const value = findField(fields, label);
+    if (value !== "Nao informado") return value;
+  }
+
+  return "Nao informado";
+}
+
+function knownFieldValue(fields: Field[], labels: string[]) {
+  const value = findFirstField(fields, labels);
+  return value === "Nao informado" ? "" : value;
+}
+
 function App() {
   const [company, setCompany] = useState<Company | null>(null);
   const [history, setHistory] = useState<ConsultationHistoryItem[]>([]);
@@ -98,9 +113,13 @@ function App() {
       };
     }
 
+    const ie = findFirstField(company.fiscal, ["Inscricao estadual", "Inscricao estadual SEFAZ-BA"]);
+    const status = findFirstField(company.fiscal, ["Situacao IE SEFAZ-BA", "Situacao cadastral RF"]);
+    const regime = findFirstField(company.fiscal, ["Regime SEFAZ-BA", "Simples Nacional"]);
+
     return {
-      status: findField(company.fiscal, "Situacao cadastral RF"),
-      detail: `IE: ${findField(company.fiscal, "Inscricao estadual")}`,
+      status,
+      detail: `IE: ${ie} - Regime: ${regime}`,
       source: findField(company.fiscal, "Fonte fiscal")
     };
   }, [company]);
@@ -123,11 +142,30 @@ function App() {
     setQueryError("");
 
     try {
-      const result = await fetchCompanyByCnpj(cnpj);
-      setCompany(result);
-      setLastQuery(nowLabel());
-      setHistory(saveConsultationHistory(result));
-      notify("Consulta carregada");
+      const [publicResult, sefazResult] = await Promise.allSettled([fetchCompanyByCnpj(cnpj), fetchSefazBaByCnpj(cnpj)]);
+      const sefazData = sefazResult.status === "fulfilled" ? sefazResult.value : null;
+
+      if (publicResult.status === "fulfilled") {
+        const result = sefazData ? mergeCompanyWithSefazBa(publicResult.value, sefazData) : publicResult.value;
+        setCompany(result);
+        setLastQuery(nowLabel());
+        setHistory(saveConsultationHistory(result));
+        notify(hasSefazBaRegistration(sefazData) ? "Consulta carregada com SEFAZ-BA" : "Consulta carregada");
+        return;
+      }
+
+      if (hasSefazBaRegistration(sefazData)) {
+        const brasilApiMessage = publicResult.reason instanceof Error ? publicResult.reason.message : "Nao retornado pela fonte publica";
+        const result = mapSefazBaToCompany(sefazData, brasilApiMessage);
+        setCompany(result);
+        setLastQuery(nowLabel());
+        setHistory(saveConsultationHistory(result));
+        notify("Consulta carregada pela SEFAZ-BA");
+        return;
+      }
+
+      const error = publicResult.reason instanceof Error ? publicResult.reason : sefazResult.status === "rejected" ? sefazResult.reason : null;
+      throw error instanceof Error ? error : new Error("Nao foi possivel consultar o CNPJ.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel consultar o CNPJ.";
       setQueryError(message);
@@ -294,6 +332,8 @@ function App() {
               isLoading={isLoading}
               lastQuery={lastQuery}
               queryError={queryError}
+              companyStatus={company?.status ?? ""}
+              stateRegistration={company ? knownFieldValue(company.fiscal, ["Inscricao estadual", "Inscricao estadual SEFAZ-BA"]) : ""}
               onSearch={handleSearch}
             />
 
