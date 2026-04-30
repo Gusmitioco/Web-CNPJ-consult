@@ -68,6 +68,7 @@ export const config = {
     timeoutMs: numberFromEnv("SEFAZ_TIMEOUT_MS", 12000)
   },
   audit: {
-    allowedIps: listFromEnv("AUDIT_ALLOWED_IPS", ["127.0.0.1", "::1"])
+    allowedIps: listFromEnv("AUDIT_ALLOWED_IPS", ["127.0.0.1", "::1"]),
+    masterToken: process.env.AUDIT_MASTER_TOKEN || process.env.AUDIT_ADMIN_TOKEN || ""
   }
 };

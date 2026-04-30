@@ -1,6 +1,7 @@
-import { ClipboardList, RefreshCw, Search } from "lucide-react";
+import { ClipboardList, LockKeyhole, RefreshCw, Search } from "lucide-react";
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { fetchAuditLogs, type AuditLogEntry } from "../services/auditApi";
+import { createAuditUser, fetchAuditLogs, fetchAuditUsers, type AuditLogEntry, type AuditUsersOverview } from "../services/auditApi";
 import { formatCnpj, onlyDigits } from "../utils/cnpj";
 import { GlassPanel } from "./GlassPanel";
 
@@ -44,9 +45,25 @@ function matchesFilter(entry: AuditLogEntry, filter: string) {
   return text.includes(filter.toLowerCase()) || onlyDigits(entry.cnpj).includes(onlyDigits(filter));
 }
 
-export function AuditLogPanel() {
+type AuditLogPanelProps = {
+  tokenRequired?: boolean;
+  onBlocked?: () => void;
+};
+
+const auditTokenKey = "consulta-cnpj-sefaz:audit-token";
+
+export function AuditLogPanel({ tokenRequired = false, onBlocked }: AuditLogPanelProps) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [filter, setFilter] = useState("");
+  const [token, setToken] = useState(() => sessionStorage.getItem(auditTokenKey) || "");
+  const [tokenInput, setTokenInput] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(!tokenRequired);
+  const [isMaster, setIsMaster] = useState(false);
+  const [usersOverview, setUsersOverview] = useState<AuditUsersOverview | null>(null);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserRole, setNewUserRole] = useState("viewer");
+  const [newUserIps, setNewUserIps] = useState("*");
+  const [generatedToken, setGeneratedToken] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,22 +72,95 @@ export function AuditLogPanel() {
     [logs, filter]
   );
 
-  async function loadLogs() {
+  async function loadLogs(currentToken = token) {
+    if (tokenRequired && !currentToken) {
+      setIsAuthenticated(false);
+      setError("");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
-      setLogs(await fetchAuditLogs());
+      setLogs(await fetchAuditLogs(80, currentToken));
+      setIsAuthenticated(true);
+      const overview = await fetchAuditUsers(currentToken).catch(() => null);
+      setUsersOverview(overview);
+      setIsMaster(Boolean(overview));
     } catch (currentError) {
+      if (currentError instanceof Error && currentError.name === "401") {
+        sessionStorage.removeItem(auditTokenKey);
+        setToken("");
+        setIsAuthenticated(false);
+      }
+
+      if (currentError instanceof Error && currentError.name === "403") {
+        sessionStorage.removeItem(auditTokenKey);
+        setToken("");
+        setLogs([]);
+        setIsAuthenticated(false);
+        setIsMaster(false);
+        setUsersOverview(null);
+        onBlocked?.();
+      }
+
       setError(currentError instanceof Error ? currentError.message : "Nao foi possivel carregar os logs locais.");
     } finally {
       setIsLoading(false);
     }
   }
 
+  function handleTokenSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextToken = tokenInput.trim();
+
+    if (!nextToken) {
+      setError("Informe o token de auditoria.");
+      return;
+    }
+
+    sessionStorage.setItem(auditTokenKey, nextToken);
+    setToken(nextToken);
+    setTokenInput("");
+    loadLogs(nextToken);
+  }
+
+  function clearToken() {
+    sessionStorage.removeItem(auditTokenKey);
+    setToken("");
+    setLogs([]);
+    setUsersOverview(null);
+    setIsMaster(false);
+    setIsAuthenticated(false);
+  }
+
+  async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setGeneratedToken("");
+
+    try {
+      const created = await createAuditUser(token, {
+        name: newUserName,
+        role: newUserRole,
+        allowedIps: newUserIps.split(",").map((item) => item.trim()).filter(Boolean)
+      });
+      setGeneratedToken(created.token);
+      setNewUserName("");
+      setNewUserRole("viewer");
+      setNewUserIps("*");
+      setUsersOverview(await fetchAuditUsers(token));
+    } catch (currentError) {
+      setError(currentError instanceof Error ? currentError.message : "Nao foi possivel criar o usuario de auditoria.");
+    }
+  }
+
   useEffect(() => {
-    loadLogs();
-  }, []);
+    if (!tokenRequired || token) {
+      loadLogs(token);
+    }
+  }, [tokenRequired]);
 
   return (
     <GlassPanel className="grid gap-4">
@@ -84,13 +174,124 @@ export function AuditLogPanel() {
         </div>
         <button
           type="button"
-          onClick={loadLogs}
+          onClick={() => loadLogs()}
+          disabled={tokenRequired && !isAuthenticated}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
         >
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} aria-hidden="true" />
           Atualizar
         </button>
       </div>
+
+      {tokenRequired && !isAuthenticated ? (
+        <form onSubmit={handleTokenSubmit} className="grid gap-3 rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_rgba(0,100,101,0.07)] backdrop-blur-md sm:grid-cols-[1fr_auto]">
+          <label className="grid gap-2">
+            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] text-[#006465]">
+              <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+              Token de admin
+            </span>
+            <input
+              type="password"
+              value={tokenInput}
+              onChange={(event) => setTokenInput(event.target.value)}
+              autoComplete="off"
+              placeholder="Informe o token para visualizar os logs"
+              className="h-11 w-full rounded-xl border border-[#00c9d2]/24 bg-white/50 px-4 text-sm font-bold text-[#484848] outline-none transition placeholder:text-[#484848]/42 focus:border-[#0f928c] focus:ring-4 focus:ring-[#00c9d2]/18"
+            />
+          </label>
+          <button
+            type="submit"
+            className="inline-flex h-11 items-center justify-center self-end rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
+          >
+            Acessar
+          </button>
+        </form>
+      ) : null}
+
+      {error ? <p className="text-sm font-bold text-[#006465]">{error}</p> : null}
+
+      {tokenRequired && isAuthenticated ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={clearToken}
+            className="text-xs font-black uppercase tracking-[0.08em] text-[#006465] transition hover:text-[#0f928c]"
+          >
+            Sair da auditoria
+          </button>
+        </div>
+      ) : null}
+
+      {!tokenRequired || isAuthenticated ? (
+        <>
+      {isMaster && usersOverview ? (
+        <div className="grid gap-3 rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_rgba(0,100,101,0.07)] backdrop-blur-md">
+          <div>
+            <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Perfil master</span>
+            <strong className="mt-1 block text-sm text-[#484848]">Usuarios de auditoria e bloqueios</strong>
+          </div>
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="rounded-xl border border-white/34 bg-white/20 p-3">
+              <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Tokens cadastrados</span>
+              <div className="mt-2 grid gap-2">
+                {usersOverview.users.map((user) => (
+                  <div key={user.id} className="text-sm font-bold text-[#484848]">
+                    {user.name} - {user.role} - {user.tokenPreview}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/34 bg-white/20 p-3">
+              <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Bloqueios</span>
+              <div className="mt-2 grid gap-2">
+                {usersOverview.blockedClients.length ? (
+                  usersOverview.blockedClients.map((client) => (
+                    <div key={`${client.ip}-${client.blockedAt}`} className="text-sm font-bold text-[#484848]">
+                      {client.ip} - {client.attempts} tentativas
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm font-bold text-[#484848]/66">Nenhum bloqueio ativo.</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <form onSubmit={handleCreateUser} className="grid gap-3 rounded-xl border border-white/34 bg-white/20 p-3 lg:grid-cols-[1fr_160px_1fr_auto]">
+            <input
+              value={newUserName}
+              onChange={(event) => setNewUserName(event.target.value)}
+              placeholder="Nome do usuario"
+              className="h-10 rounded-xl border border-[#00c9d2]/24 bg-white/50 px-3 text-sm font-bold text-[#484848] outline-none placeholder:text-[#484848]/42 focus:border-[#0f928c]"
+            />
+            <select
+              value={newUserRole}
+              onChange={(event) => setNewUserRole(event.target.value)}
+              className="h-10 rounded-xl border border-[#00c9d2]/24 bg-white/50 px-3 text-sm font-bold text-[#484848] outline-none focus:border-[#0f928c]"
+            >
+              <option value="viewer">viewer</option>
+              <option value="master">master</option>
+            </select>
+            <input
+              value={newUserIps}
+              onChange={(event) => setNewUserIps(event.target.value)}
+              placeholder="IPs liberados, ou *"
+              className="h-10 rounded-xl border border-[#00c9d2]/24 bg-white/50 px-3 text-sm font-bold text-[#484848] outline-none placeholder:text-[#484848]/42 focus:border-[#0f928c]"
+            />
+            <button
+              type="submit"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] transition hover:bg-[#beee3b]/28"
+            >
+              Gerar
+            </button>
+          </form>
+          {generatedToken ? (
+            <div className="rounded-xl border border-[#0f928c]/24 bg-[#00c9d2]/10 p-3">
+              <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Token gerado</span>
+              <strong className="mt-1 block break-all text-sm text-[#484848]">{generatedToken}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#006465]" aria-hidden="true" />
@@ -101,8 +302,6 @@ export function AuditLogPanel() {
           className="h-11 w-full rounded-xl border border-[#00c9d2]/24 bg-white/50 px-10 text-sm font-bold text-[#484848] outline-none transition placeholder:text-[#484848]/42 focus:border-[#0f928c] focus:ring-4 focus:ring-[#00c9d2]/18"
         />
       </div>
-
-      {error ? <p className="text-sm font-bold text-[#006465]">{error}</p> : null}
 
       <div className="grid gap-2">
         {visibleLogs.length ? (
@@ -136,7 +335,8 @@ export function AuditLogPanel() {
           </div>
         )}
       </div>
+        </>
+      ) : null}
     </GlassPanel>
   );
 }
-

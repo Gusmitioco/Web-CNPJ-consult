@@ -87,6 +87,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [queryError, setQueryError] = useState("");
   const [canViewAudit, setCanViewAudit] = useState(false);
+  const [auditTokenRequired, setAuditTokenRequired] = useState(true);
   const [currentPage, setCurrentPage] = useState<"main" | "audit">("main");
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const activeSectionRef = useRef(activeSection);
@@ -177,6 +178,14 @@ function App() {
     notify(opened ? "Relatorio PDF aberto" : "Popup bloqueado pelo navegador");
   }
 
+  function handleAuditBlocked() {
+    setCanViewAudit(false);
+    setCompany(null);
+    setQueryError("");
+    setCurrentPage("main");
+    notify("Acesso aos logs bloqueado");
+  }
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("theme", theme);
@@ -188,8 +197,14 @@ function App() {
 
   useEffect(() => {
     fetchAuditAccess()
-      .then((access) => setCanViewAudit(access.allowed))
-      .catch(() => setCanViewAudit(false));
+      .then((access) => {
+        setCanViewAudit(access.allowed);
+        setAuditTokenRequired(access.tokenRequired);
+      })
+      .catch(() => {
+        setCanViewAudit(false);
+        setAuditTokenRequired(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -319,7 +334,7 @@ function App() {
                 Voltar
               </button>
             </header>
-            <AuditLogPanel />
+            <AuditLogPanel tokenRequired={auditTokenRequired} onBlocked={handleAuditBlocked} />
           </div>
         </main>
       ) : (

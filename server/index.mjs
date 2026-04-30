@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConsultationLog, recordConsultation } from "./auditLog.mjs";
+import { authenticateAuditUser, createAuditUserForMaster, readAuditUsersForMaster } from "./auditUsers.mjs";
 import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
 import { config } from "./config.mjs";
 import { createRateLimiter } from "./rateLimit.mjs";
@@ -57,10 +58,28 @@ function isRateLimited(request) {
   return rateLimiter.isLimited(getClientIp(request));
 }
 
-function isAuditAllowed(request) {
-  const clientIp = getClientIp(request);
-  const allowedIps = config.audit.allowedIps;
-  return allowedIps.includes(clientIp);
+function getAuditToken(request) {
+  const headerToken = request.headers["x-admin-token"];
+  if (Array.isArray(headerToken)) return headerToken[0] || "";
+  if (headerToken) return String(headerToken);
+
+  const authorization = request.headers.authorization || "";
+  const match = String(authorization).match(/^Bearer\s+(.+)$/i);
+  return match?.[1] || "";
+}
+
+function getUserAgent(request) {
+  const userAgent = request.headers["user-agent"];
+  return Array.isArray(userAgent) ? userAgent.join(", ") : userAgent || "";
+}
+
+async function getAuditAccess(request) {
+  return authenticateAuditUser({
+    token: getAuditToken(request),
+    clientIp: getClientIp(request),
+    userAgent: getUserAgent(request),
+    config: config.audit
+  });
 }
 
 function sourceSummary(result) {
@@ -285,8 +304,27 @@ async function handleCompanyRequest(request, response, pathname) {
 }
 
 async function handleAuditLogRequest(request, response, url) {
-  if (!isAuditAllowed(request)) {
-    sendJson(response, 403, { message: "Acesso aos logs nao autorizado para este IP." });
+  const access = await getAuditAccess(request);
+
+  if (!access.allowed) {
+    sendJson(response, 403, {
+      message: access.blocked
+        ? "Token incorreto 3 vezes. Este cliente foi removido do acesso aos logs."
+        : "Acesso aos logs nao autorizado para este usuario ou IP.",
+      blocked: access.blocked,
+      attemptsLeft: access.attemptsLeft
+    });
+    return;
+  }
+
+  if (!access.authenticated) {
+    sendJson(response, 401, {
+      message: getAuditToken(request)
+        ? `Token de auditoria invalido. Tentativas restantes: ${access.attemptsLeft}.`
+        : "Informe o token de auditoria.",
+      blocked: access.blocked,
+      attemptsLeft: access.attemptsLeft
+    });
     return;
   }
 
@@ -301,11 +339,54 @@ async function handleAuditLogRequest(request, response, url) {
   sendJson(response, 200, { entries, total: entries.length });
 }
 
-function handleAuditAccessRequest(request, response) {
-  sendJson(response, 200, {
-    allowed: isAuditAllowed(request),
-    clientIp: getClientIp(request)
-  });
+async function handleAuditAccessRequest(request, response) {
+  sendJson(response, 200, await getAuditAccess(request));
+}
+
+async function handleAuditUsersRequest(request, response) {
+  const access = await getAuditAccess(request);
+
+  if (!access.authenticated || access.user?.role !== "master") {
+    sendJson(response, 403, { message: "Acesso permitido apenas ao perfil master." });
+    return;
+  }
+
+  sendJson(response, 200, await readAuditUsersForMaster(access));
+}
+
+async function readJsonBody(request, maxBytes = 8192) {
+  const chunks = [];
+  let total = 0;
+
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > maxBytes) {
+      const error = new Error("Payload muito grande.");
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+
+  if (!chunks.length) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function handleAuditUserCreateRequest(request, response) {
+  const access = await getAuditAccess(request);
+
+  if (!access.authenticated || access.user?.role !== "master") {
+    sendJson(response, 403, { message: "Acesso permitido apenas ao perfil master." });
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(request);
+    const created = await createAuditUserForMaster(access, body);
+    sendJson(response, 201, created);
+  } catch (error) {
+    sendJson(response, error?.statusCode || 400, { message: "Nao foi possivel criar o usuario de auditoria." });
+  }
 }
 
 async function serveStatic(request, response, pathname) {
@@ -353,7 +434,17 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/api/audit/access") {
-    handleAuditAccessRequest(request, response);
+    await handleAuditAccessRequest(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/audit/users") {
+    await handleAuditUsersRequest(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/audit/users") {
+    await handleAuditUserCreateRequest(request, response);
     return;
   }
 

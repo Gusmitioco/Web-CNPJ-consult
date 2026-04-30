@@ -105,6 +105,8 @@ UPSTREAM_TIMEOUT_MS=8000
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=40
 AUDIT_ALLOWED_IPS=127.0.0.1,::1
+AUDIT_ADMIN_TOKEN=troque-este-token
+AUDIT_MASTER_TOKEN=bc1qexemplo-de-token-master
 ```
 
 Para restringir o acesso apenas a maquina local, use `HOST=127.0.0.1`. Para acesso pela rede local, mantenha `HOST=0.0.0.0`.
@@ -180,6 +182,9 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 26: indicador visual de fontes consultadas no painel principal.
 - Marco 27: pagina de auditoria local com filtro por CNPJ, IP, fonte ou resultado.
 - Marco 28: whitelist de IPs para liberar a visualizacao do painel de auditoria.
+- Marco 29: token de admin para liberar leitura dos logs mesmo em IP autorizado.
+- Marco 30: perfil master local com token individual, visao de usuarios e bloqueios.
+- Marco 31: criacao local de usuarios de auditoria com tokens individuais no formato `bc1q...`.
 
 ## Observacoes sobre APIs e raspagem
 
@@ -216,7 +221,7 @@ O backend aplica algumas protecoes iniciais:
 - mantem certificado e senha apenas no backend local, via `.env`/variaveis de ambiente.
 - grava log local de consultas em `server/data/query-log.json`, arquivo ignorado pelo Git.
 - expoe os logs apenas pela aplicacao local, sem incluir o arquivo no repositorio.
-- restringe a leitura dos logs por whitelist de IPs configurada localmente.
+- restringe a leitura dos logs por whitelist de IPs e token de admin configurados localmente.
 
 Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor fora da rede local, ainda seria necessario revisar autenticacao, logs, observabilidade, HTTPS, controle de origem, limite de payloads e politica de uso das APIs.
 
