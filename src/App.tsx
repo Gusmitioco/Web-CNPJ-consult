@@ -1,5 +1,6 @@
-import { CircleCheck, DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sparkles, Sun, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CircleCheck, ClipboardList, DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sparkles, Sun, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AuditLogPanel } from "./components/AuditLogPanel";
 import { CopyButton } from "./components/CopyButton";
 import { FieldItem } from "./components/FieldItem";
 import { GlassPanel } from "./components/GlassPanel";
@@ -7,6 +8,7 @@ import { MobileNav } from "./components/MobileNav";
 import { SearchPanel } from "./components/SearchPanel";
 import { SectionCard } from "./components/SectionCard";
 import { navItems } from "./components/Sidebar";
+import { fetchAuditAccess } from "./services/auditApi";
 import { fetchCompanyByCnpj } from "./services/cnpjApi";
 import { fetchConsultationHistory, saveConsultationHistory, type ConsultationHistoryItem } from "./services/historyApi";
 import type { Company, Field } from "./types";
@@ -84,6 +86,8 @@ function App() {
   const [activeSection, setActiveSection] = useState("consulta");
   const [isLoading, setIsLoading] = useState(false);
   const [queryError, setQueryError] = useState("");
+  const [canViewAudit, setCanViewAudit] = useState(false);
+  const [currentPage, setCurrentPage] = useState<"main" | "audit">("main");
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const activeSectionRef = useRef(activeSection);
   const navigationLockRef = useRef<number | null>(null);
@@ -182,6 +186,18 @@ function App() {
     loadHistory();
   }, []);
 
+  useEffect(() => {
+    fetchAuditAccess()
+      .then((access) => setCanViewAudit(access.allowed))
+      .catch(() => setCanViewAudit(false));
+  }, []);
+
+  useEffect(() => {
+    if (!canViewAudit && currentPage === "audit") {
+      setCurrentPage("main");
+    }
+  }, [canViewAudit, currentPage]);
+
   function handleNavigate(href: string) {
     const id = href.replace("#", "");
     const section = document.getElementById(id);
@@ -256,6 +272,58 @@ function App() {
 
   return (
     <div className="min-h-screen text-[#484848]">
+      {currentPage !== "audit" ? (
+        <div className="fixed right-4 top-4 z-30 grid gap-2 sm:right-6 sm:top-6">
+          {canViewAudit ? (
+            <button
+              type="button"
+              onClick={() => setCurrentPage("audit")}
+              aria-label="Abrir logs de auditoria"
+              title="Logs"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.1)] backdrop-blur-md transition hover:bg-[#beee3b]/28"
+            >
+              <ClipboardList className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? "Ativar modo dia" : "Ativar modo noite"}
+            title={theme === "dark" ? "Modo dia" : "Modo noite"}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.1)] backdrop-blur-md transition hover:bg-[#beee3b]/28"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        </div>
+      ) : null}
+
+      {currentPage === "audit" && canViewAudit ? (
+        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto grid w-full max-w-[1180px] gap-5">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.09em] text-[#0f928c]">
+                  <ClipboardList className="h-4 w-4" aria-hidden="true" />
+                  Auditoria local
+                </p>
+                <h1 className="text-3xl font-black leading-tight text-[#484848] sm:text-4xl">
+                  Logs de consultas
+                </h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage("main")}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Voltar
+              </button>
+            </header>
+            <AuditLogPanel />
+          </div>
+        </main>
+      ) : (
+        <>
       {company ? <MobileNav activeSection={activeSection} onNavigate={handleNavigate} /> : null}
 
         <main className={`min-w-0 px-4 sm:px-6 lg:px-8 ${company ? "py-5" : "grid min-h-screen place-items-center py-8"}`}>
@@ -290,15 +358,6 @@ function App() {
                     >
                       <FileJson className="h-4 w-4" aria-hidden="true" />
                       JSON
-                    </button>
-                    <button
-                      type="button"
-                      onClick={toggleTheme}
-                      aria-label={theme === "dark" ? "Ativar modo dia" : "Ativar modo noite"}
-                      title={theme === "dark" ? "Modo dia" : "Modo noite"}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
-                    >
-                      {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
                     </button>
                   </>
                 ) : null}
@@ -347,6 +406,24 @@ function App() {
                         </button>
                       ))}
                     </div>
+                  </GlassPanel>
+                ) : null}
+                {canViewAudit ? (
+                  <GlassPanel className="mx-auto flex w-full max-w-xl flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.09em] text-[#0f928c]">
+                        Auditoria local
+                      </p>
+                      <strong className="text-sm text-[#484848]">Visualizar logs de consultas</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage("audit")}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-4 text-sm font-bold text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] backdrop-blur-sm transition hover:bg-[#beee3b]/28"
+                    >
+                      <ClipboardList className="h-4 w-4" aria-hidden="true" />
+                      Abrir logs
+                    </button>
                   </GlassPanel>
                 ) : null}
               </>
@@ -558,6 +635,8 @@ function App() {
             )}
           </div>
         </main>
+        </>
+      )}
 
       <div
         className={`fixed bottom-5 right-5 z-30 max-w-[calc(100vw-40px)] rounded-xl bg-[#484848] px-4 py-3 text-sm font-black text-white shadow-2xl transition ${

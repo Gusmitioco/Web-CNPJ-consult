@@ -50,6 +50,14 @@ async function readCurrentLog() {
   }
 }
 
+export async function readConsultationLog({ limit = 100 } = {}) {
+  const entries = await readCurrentLog();
+  return entries
+    .slice()
+    .sort((first, second) => new Date(second.queriedAt).getTime() - new Date(first.queriedAt).getTime())
+    .slice(0, limit);
+}
+
 async function appendLogEntry(entry) {
   await mkdir(dataDir, { recursive: true });
   const currentLog = await readCurrentLog();
@@ -73,4 +81,3 @@ export function recordConsultation(request, details) {
   writeQueue = writeQueue.then(() => appendLogEntry(entry)).catch(() => undefined);
   return writeQueue;
 }
-

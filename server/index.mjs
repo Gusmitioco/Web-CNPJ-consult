@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { recordConsultation } from "./auditLog.mjs";
+import { readConsultationLog, recordConsultation } from "./auditLog.mjs";
 import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
 import { config } from "./config.mjs";
 import { createRateLimiter } from "./rateLimit.mjs";
@@ -45,12 +45,22 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
+function normalizeClientIp(value) {
+  return String(value || "unknown").replace(/^::ffff:/, "");
+}
+
 function getClientIp(request) {
-  return request.socket.remoteAddress || "unknown";
+  return normalizeClientIp(request.socket.remoteAddress);
 }
 
 function isRateLimited(request) {
   return rateLimiter.isLimited(getClientIp(request));
+}
+
+function isAuditAllowed(request) {
+  const clientIp = getClientIp(request);
+  const allowedIps = config.audit.allowedIps;
+  return allowedIps.includes(clientIp);
 }
 
 function sourceSummary(result) {
@@ -274,6 +284,30 @@ async function handleCompanyRequest(request, response, pathname) {
   sendJson(response, 200, payload);
 }
 
+async function handleAuditLogRequest(request, response, url) {
+  if (!isAuditAllowed(request)) {
+    sendJson(response, 403, { message: "Acesso aos logs nao autorizado para este IP." });
+    return;
+  }
+
+  if (isRateLimited(request)) {
+    sendJson(response, 429, { message: "Muitas consultas em pouco tempo. Aguarde um minuto e tente novamente." });
+    return;
+  }
+
+  const rawLimit = Number(url.searchParams.get("limit") || 80);
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 250) : 80;
+  const entries = await readConsultationLog({ limit });
+  sendJson(response, 200, { entries, total: entries.length });
+}
+
+function handleAuditAccessRequest(request, response) {
+  sendJson(response, 200, {
+    allowed: isAuditAllowed(request),
+    clientIp: getClientIp(request)
+  });
+}
+
 async function serveStatic(request, response, pathname) {
   const cleanPath = pathname === "/" ? "/index.html" : pathname;
   const requestedPath = path.normalize(path.join(distDir, cleanPath));
@@ -310,6 +344,16 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname.startsWith("/api/fiscal/ba/")) {
     await handleSefazBahiaRequest(request, response, url.pathname);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/audit/logs") {
+    await handleAuditLogRequest(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/audit/access") {
+    handleAuditAccessRequest(request, response);
     return;
   }
 

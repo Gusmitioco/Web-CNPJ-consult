@@ -44,6 +44,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Consulta unificada no backend para agregar dados publicos e fiscais antes de entregar ao frontend.
 - Log local de consultas em arquivo JSON ignorado pelo Git.
 - Indicador visual das fontes que responderam em cada consulta.
+- Pagina de auditoria local para visualizar e filtrar consultas registradas.
 
 ## Como rodar
 
@@ -103,6 +104,7 @@ CACHE_TTL_MS=600000
 UPSTREAM_TIMEOUT_MS=8000
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=40
+AUDIT_ALLOWED_IPS=127.0.0.1,::1
 ```
 
 Para restringir o acesso apenas a maquina local, use `HOST=127.0.0.1`. Para acesso pela rede local, mantenha `HOST=0.0.0.0`.
@@ -176,6 +178,8 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 24: consulta agregada no backend, reduzindo regras de integracao dentro do frontend.
 - Marco 25: log local de consultas com CNPJ, data/hora, cliente da rede e status das fontes.
 - Marco 26: indicador visual de fontes consultadas no painel principal.
+- Marco 27: pagina de auditoria local com filtro por CNPJ, IP, fonte ou resultado.
+- Marco 28: whitelist de IPs para liberar a visualizacao do painel de auditoria.
 
 ## Observacoes sobre APIs e raspagem
 
@@ -211,6 +215,8 @@ O backend aplica algumas protecoes iniciais:
 - nao persiste historico de consultas no servidor.
 - mantem certificado e senha apenas no backend local, via `.env`/variaveis de ambiente.
 - grava log local de consultas em `server/data/query-log.json`, arquivo ignorado pelo Git.
+- expoe os logs apenas pela aplicacao local, sem incluir o arquivo no repositorio.
+- restringe a leitura dos logs por whitelist de IPs configurada localmente.
 
 Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor fora da rede local, ainda seria necessario revisar autenticacao, logs, observabilidade, HTTPS, controle de origem, limite de payloads e politica de uso das APIs.
 

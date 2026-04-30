@@ -38,6 +38,15 @@ function booleanFromEnv(name, fallback) {
   return !["0", "false", "nao", "não", "no"].includes(value.toLowerCase());
 }
 
+function listFromEnv(name, fallback = []) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 loadLocalEnv();
 
 export const config = {
@@ -57,5 +66,8 @@ export const config = {
     caPath: process.env.SEFAZ_CA_PATH || "",
     rejectUnauthorized: booleanFromEnv("SEFAZ_REJECT_UNAUTHORIZED", true),
     timeoutMs: numberFromEnv("SEFAZ_TIMEOUT_MS", 12000)
+  },
+  audit: {
+    allowedIps: listFromEnv("AUDIT_ALLOWED_IPS", ["127.0.0.1", "::1"])
   }
 };
