@@ -23,7 +23,13 @@
   --scrollbar-track: rgba(255, 255, 255, 0.28);
   --scrollbar-thumb: rgba(0, 100, 101, 0.46);
   --scrollbar-thumb-hover: rgba(15, 146, 140, 0.72);
-  background: rgba(0, 201, 210, 0.12);
+  --page-background-color: #e9f8f9;
+  --page-background:
+    radial-gradient(circle at 12% 14%, rgba(0, 201, 210, 0.34), transparent 32%),
+    radial-gradient(circle at 82% 20%, rgba(190, 238, 59, 0.24), transparent 28%),
+    radial-gradient(circle at 82% 82%, rgba(15, 146, 140, 0.22), transparent 30%),
+    linear-gradient(135deg, rgba(0, 100, 101, 0.14) 0%, rgba(0, 201, 210, 0.13) 45%, rgba(190, 238, 59, 0.13) 100%);
+  background: var(--page-background);
 }
 
 [data-theme="dark"] {
@@ -46,7 +52,13 @@
   --scrollbar-track: rgba(5, 22, 31, 0.62);
   --scrollbar-thumb: rgba(34, 211, 238, 0.42);
   --scrollbar-thumb-hover: rgba(0, 245, 255, 0.72);
-  background: #020b12;
+  --page-background-color: #020b12;
+  --page-background:
+    radial-gradient(circle at 14% 12%, rgba(34, 211, 238, 0.2), transparent 31%),
+    radial-gradient(circle at 78% 20%, rgba(0, 245, 255, 0.11), transparent 28%),
+    radial-gradient(circle at 82% 82%, rgba(6, 52, 58, 0.52), transparent 34%),
+    linear-gradient(135deg, #020b12 0%, #031018 48%, #06343a 100%);
+  background: var(--page-background);
 }
 
 * {
@@ -54,6 +66,12 @@
 }
 
 html {
+  min-height: 100%;
+  background-color: var(--page-background-color);
+  background-image: var(--page-background);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
   scroll-behavior: smooth;
   scroll-padding-top: 144px;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -85,19 +103,16 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 12% 14%, rgba(0, 201, 210, 0.34), transparent 32%),
-    radial-gradient(circle at 82% 20%, rgba(190, 238, 59, 0.24), transparent 28%),
-    radial-gradient(circle at 82% 82%, rgba(15, 146, 140, 0.22), transparent 30%),
-    linear-gradient(135deg, rgba(0, 100, 101, 0.14) 0%, rgba(0, 201, 210, 0.13) 45%, rgba(190, 238, 59, 0.13) 100%);
+  background-color: var(--page-background-color);
+  background-image: var(--page-background);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
-[data-theme="dark"] body {
-  background:
-    radial-gradient(circle at 14% 12%, rgba(34, 211, 238, 0.2), transparent 31%),
-    radial-gradient(circle at 78% 20%, rgba(0, 245, 255, 0.11), transparent 28%),
-    radial-gradient(circle at 82% 82%, rgba(6, 52, 58, 0.52), transparent 34%),
-    linear-gradient(135deg, #020b12 0%, #031018 48%, #06343a 100%);
+#root {
+  min-height: 100vh;
+  background-color: transparent;
 }
 
 body::before {
