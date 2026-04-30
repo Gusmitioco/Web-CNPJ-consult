@@ -78,6 +78,46 @@ function knownFieldValue(fields: Field[], labels: string[]) {
   return value === "Nao informado" ? "" : value;
 }
 
+function isUsefulFiscalValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return Boolean(
+    normalized &&
+      normalized !== "nao informado" &&
+      normalized !== "nao retornada" &&
+      !normalized.startsWith("nao consultad") &&
+      !normalized.startsWith("nao informado pela")
+  );
+}
+
+function findUsefulFiscalField(fields: Field[], labels: string[]) {
+  for (const label of labels) {
+    const value = findField(fields, label);
+    if (isUsefulFiscalValue(value)) return value;
+  }
+
+  return "";
+}
+
+function isPositiveFiscalOption(value: string) {
+  return value.trim().toLowerCase().startsWith("sim");
+}
+
+function taxRegimeFromOptions(fields: Field[]) {
+  const mei = findField(fields, "MEI");
+  const simples = findField(fields, "Simples Nacional");
+
+  if (isPositiveFiscalOption(mei)) {
+    return isPositiveFiscalOption(simples) ? `MEI / Simples Nacional (${simples})` : `MEI (${mei})`;
+  }
+
+  if (isPositiveFiscalOption(simples)) {
+    return `Simples Nacional (${simples})`;
+  }
+
+  return "";
+}
+
 function App() {
   const [company, setCompany] = useState<Company | null>(null);
   const [history, setHistory] = useState<ConsultationHistoryItem[]>([]);
@@ -117,13 +157,19 @@ function App() {
       };
     }
 
-    const ie = findFirstField(company.fiscal, ["Inscricao estadual", "Inscricao estadual SEFAZ-BA"]);
-    const status = findFirstField(company.fiscal, ["Situacao IE SEFAZ-BA", "Situacao cadastral RF"]);
-    const regime = findFirstField(company.fiscal, ["Regime SEFAZ-BA", "Simples Nacional"]);
+    const ie = findUsefulFiscalField(company.fiscal, ["Inscricao estadual", "Inscricao estadual SEFAZ-BA"]);
+    const ieStatus = findUsefulFiscalField(company.fiscal, ["Situacao IE SEFAZ-BA"]);
+    const regime = findUsefulFiscalField(company.fiscal, ["Regime SEFAZ-BA"]) || taxRegimeFromOptions(company.fiscal);
+    const cadastralStatus = findUsefulFiscalField(company.fiscal, ["Situacao cadastral RF"]);
+    const status = ieStatus || cadastralStatus || "Situacao fiscal nao retornada";
 
     return {
       status,
-      detail: `IE: ${ie} - Regime: ${regime}`,
+      detail: [
+        `IE: ${ie || "Nao retornada"}`,
+        `Situacao IE: ${ieStatus || "Nao retornada"}`,
+        `Regime tributario: ${regime || "Nao retornado pelas fontes consultadas"}`
+      ].join(" - "),
       source: findField(company.fiscal, "Fonte fiscal")
     };
   }, [company]);

@@ -1,7 +1,14 @@
-import { ClipboardList, LockKeyhole, RefreshCw, Search } from "lucide-react";
+import { ClipboardList, KeyRound, LockKeyhole, RefreshCw, Search, ShieldAlert, Unlock, Users } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { createAuditUser, fetchAuditLogs, fetchAuditUsers, type AuditLogEntry, type AuditUsersOverview } from "../services/auditApi";
+import {
+  createAuditUser,
+  fetchAuditLogs,
+  fetchAuditUsers,
+  unblockAuditClient,
+  type AuditLogEntry,
+  type AuditUsersOverview
+} from "../services/auditApi";
 import { formatCnpj, onlyDigits } from "../utils/cnpj";
 import { GlassPanel } from "./GlassPanel";
 
@@ -24,6 +31,22 @@ function resultLabel(value: string) {
   };
 
   return labels[value] || value;
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "Nunca";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function roleLabel(value: string) {
+  return value === "master" ? "Master" : "Visualizador";
 }
 
 function matchesFilter(entry: AuditLogEntry, filter: string) {
@@ -64,6 +87,7 @@ export function AuditLogPanel({ tokenRequired = false, onBlocked }: AuditLogPane
   const [newUserRole, setNewUserRole] = useState("viewer");
   const [newUserIps, setNewUserIps] = useState("*");
   const [generatedToken, setGeneratedToken] = useState("");
+  const [unlockingIp, setUnlockingIp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -156,6 +180,20 @@ export function AuditLogPanel({ tokenRequired = false, onBlocked }: AuditLogPane
     }
   }
 
+  async function handleUnblockClient(ip: string) {
+    setError("");
+    setUnlockingIp(ip);
+
+    try {
+      await unblockAuditClient(token, ip);
+      setUsersOverview(await fetchAuditUsers(token));
+    } catch (currentError) {
+      setError(currentError instanceof Error ? currentError.message : "Nao foi possivel desbloquear o cliente.");
+    } finally {
+      setUnlockingIp("");
+    }
+  }
+
   useEffect(() => {
     if (!tokenRequired || token) {
       loadLogs(token);
@@ -228,32 +266,89 @@ export function AuditLogPanel({ tokenRequired = false, onBlocked }: AuditLogPane
         <div className="grid gap-3 rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_18px_rgba(0,100,101,0.07)] backdrop-blur-md">
           <div>
             <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Perfil master</span>
-            <strong className="mt-1 block text-sm text-[#484848]">Usuarios de auditoria e bloqueios</strong>
+            <strong className="mt-1 block text-sm text-[#484848]">Usuarios, tokens e bloqueios de auditoria</strong>
           </div>
-          <div className="grid gap-2 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-white/34 bg-white/20 p-3">
-              <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Tokens cadastrados</span>
+              <span className="flex items-center gap-2 text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">
+                <Users className="h-4 w-4" aria-hidden="true" />
+                Tokens cadastrados
+              </span>
               <div className="mt-2 grid gap-2">
                 {usersOverview.users.map((user) => (
-                  <div key={user.id} className="text-sm font-bold text-[#484848]">
-                    {user.name} - {user.role} - {user.tokenPreview}
+                  <div key={user.id} className="rounded-lg border border-white/30 bg-white/18 p-3 text-sm font-bold text-[#484848]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>{user.name}</strong>
+                      <span className="rounded-full bg-[#00c9d2]/13 px-2 py-1 text-[0.68rem] font-black uppercase text-[#006465]">
+                        {roleLabel(user.role)}
+                      </span>
+                    </div>
+                    <span className="mt-2 flex items-center gap-2 break-all text-xs text-[#484848]/70">
+                      <KeyRound className="h-3.5 w-3.5 shrink-0 text-[#006465]" aria-hidden="true" />
+                      {user.tokenPreview}
+                    </span>
+                    <span className="mt-1 block text-xs text-[#484848]/70">
+                      IPs: {user.allowedIps.join(", ") || "Padrao do ambiente"} - Ultimo acesso: {formatDateTime(user.lastLoginAt)}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-white/34 bg-white/20 p-3">
-              <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Bloqueios</span>
+              <span className="flex items-center gap-2 text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">
+                <ShieldAlert className="h-4 w-4" aria-hidden="true" />
+                Bloqueios ativos
+              </span>
               <div className="mt-2 grid gap-2">
                 {usersOverview.blockedClients.length ? (
                   usersOverview.blockedClients.map((client) => (
-                    <div key={`${client.ip}-${client.blockedAt}`} className="text-sm font-bold text-[#484848]">
-                      {client.ip} - {client.attempts} tentativas
+                    <div key={`${client.ip}-${client.blockedAt}`} className="grid gap-2 rounded-lg border border-white/30 bg-white/18 p-3 text-sm font-bold text-[#484848]">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <strong className="block break-all">{client.ip}</strong>
+                          <span className="mt-1 block text-xs text-[#484848]/70">
+                            {client.attempts} tentativas - Bloqueado em {formatDateTime(client.blockedAt)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleUnblockClient(client.ip)}
+                          disabled={unlockingIp === client.ip}
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-white/42 bg-white/42 px-3 text-xs font-black uppercase tracking-[0.06em] text-[#006465] transition hover:bg-[#beee3b]/28 disabled:opacity-55"
+                        >
+                          <Unlock className="h-4 w-4" aria-hidden="true" />
+                          {unlockingIp === client.ip ? "Liberando" : "Liberar"}
+                        </button>
+                      </div>
+                      {client.userAgent ? (
+                        <span className="block break-words text-xs text-[#484848]/62">{client.userAgent}</span>
+                      ) : null}
                     </div>
                   ))
                 ) : (
                   <div className="text-sm font-bold text-[#484848]/66">Nenhum bloqueio ativo.</div>
                 )}
               </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/34 bg-white/20 p-3">
+            <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">Tentativas recentes negadas</span>
+            <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              {usersOverview.failedAttempts.length ? (
+                usersOverview.failedAttempts.map((attempt) => (
+                  <div key={`${attempt.ip}-${attempt.lastAttemptAt}`} className="rounded-lg border border-white/30 bg-white/18 p-3 text-sm font-bold text-[#484848]">
+                    <strong className="block break-all">{attempt.ip}</strong>
+                    <span className="mt-1 block text-xs text-[#484848]/70">
+                      {attempt.attempts} tentativa(s) - Ultima em {formatDateTime(attempt.lastAttemptAt)}
+                    </span>
+                    {attempt.userAgent ? (
+                      <span className="mt-1 block break-words text-xs text-[#484848]/62">{attempt.userAgent}</span>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm font-bold text-[#484848]/66">Nenhuma tentativa negada registrada.</div>
+              )}
             </div>
           </div>
           <form onSubmit={handleCreateUser} className="grid gap-3 rounded-xl border border-white/34 bg-white/20 p-3 lg:grid-cols-[1fr_160px_1fr_auto]">

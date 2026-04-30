@@ -4,7 +4,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConsultationLog, recordConsultation } from "./auditLog.mjs";
-import { authenticateAuditUser, createAuditUserForMaster, readAuditUsersForMaster } from "./auditUsers.mjs";
+import {
+  authenticateAuditUser,
+  createAuditUserForMaster,
+  readAuditUsersForMaster,
+  unblockAuditClientForMaster
+} from "./auditUsers.mjs";
 import { hasRequiredBrasilApiPayload, isValidCnpj, onlyDigits } from "./cnpj.mjs";
 import { config } from "./config.mjs";
 import { createRateLimiter } from "./rateLimit.mjs";
@@ -389,6 +394,23 @@ async function handleAuditUserCreateRequest(request, response) {
   }
 }
 
+async function handleAuditClientUnblockRequest(request, response) {
+  const access = await getAuditAccess(request);
+
+  if (!access.authenticated || access.user?.role !== "master") {
+    sendJson(response, 403, { message: "Acesso permitido apenas ao perfil master." });
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(request, 2048);
+    const result = await unblockAuditClientForMaster(access, body);
+    sendJson(response, 200, result);
+  } catch (error) {
+    sendJson(response, error?.statusCode || 400, { message: error?.message || "Nao foi possivel desbloquear o cliente." });
+  }
+}
+
 async function serveStatic(request, response, pathname) {
   const cleanPath = pathname === "/" ? "/index.html" : pathname;
   const requestedPath = path.normalize(path.join(distDir, cleanPath));
@@ -445,6 +467,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/audit/users") {
     await handleAuditUserCreateRequest(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/audit/blocked-clients/unblock") {
+    await handleAuditClientUnblockRequest(request, response);
     return;
   }
 

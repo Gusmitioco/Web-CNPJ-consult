@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataDir = path.join(rootDir, "server", "data");
-const usersPath = path.join(dataDir, "audit-users.json");
+const defaultUsersPath = path.join(rootDir, "server", "data", "audit-users.json");
+const usersPath = process.env.AUDIT_USERS_PATH ? path.resolve(process.env.AUDIT_USERS_PATH) : defaultUsersPath;
+const dataDir = path.dirname(usersPath);
 const maxFailures = 3;
 const tokenAlphabet = "023456789acdefghjklmnpqrstuvwxyz";
 
@@ -274,5 +275,36 @@ export async function createAuditUserForMaster(access, input) {
   return {
     user: sanitizeUser(user),
     token
+  };
+}
+
+export async function unblockAuditClientForMaster(access, input) {
+  if (access?.user?.role !== "master") {
+    return null;
+  }
+
+  const ip = String(input?.ip || "").trim().slice(0, 80);
+
+  if (!ip) {
+    const error = new Error("Informe o IP que sera desbloqueado.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const store = await readStore();
+  const previousBlockedCount = store.blockedClients.length;
+  const previousFailedCount = store.failedAttempts.length;
+
+  store.blockedClients = store.blockedClients.filter((item) => item.ip !== ip);
+  store.failedAttempts = store.failedAttempts.filter((item) => item.ip !== ip);
+
+  await writeStore(store);
+
+  return {
+    ip,
+    removedBlocked: previousBlockedCount - store.blockedClients.length,
+    removedFailures: previousFailedCount - store.failedAttempts.length,
+    blockedClients: store.blockedClients,
+    failedAttempts: store.failedAttempts
   };
 }

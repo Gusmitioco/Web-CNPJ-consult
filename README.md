@@ -45,6 +45,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Log local de consultas em arquivo JSON ignorado pelo Git.
 - Indicador visual das fontes que responderam em cada consulta.
 - Pagina de auditoria local para visualizar e filtrar consultas registradas.
+- Painel master de auditoria com usuarios, tentativas negadas, bloqueios ativos e desbloqueio de cliente pela interface.
 
 ## Como rodar
 
@@ -185,6 +186,7 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 29: token de admin para liberar leitura dos logs mesmo em IP autorizado.
 - Marco 30: perfil master local com token individual, visao de usuarios e bloqueios.
 - Marco 31: criacao local de usuarios de auditoria com tokens individuais no formato `bc1q...`.
+- Marco 32: painel master mais completo, exibindo tentativas negadas e permitindo desbloquear clientes bloqueados por falha de token.
 
 ## Observacoes sobre APIs e raspagem
 
@@ -222,6 +224,7 @@ O backend aplica algumas protecoes iniciais:
 - grava log local de consultas em `server/data/query-log.json`, arquivo ignorado pelo Git.
 - expoe os logs apenas pela aplicacao local, sem incluir o arquivo no repositorio.
 - restringe a leitura dos logs por whitelist de IPs e token de admin configurados localmente.
+- permite ao perfil master revisar tentativas negadas e remover bloqueios locais pela interface.
 
 Essas medidas nao substituem uma revisao de seguranca completa. Antes de expor fora da rede local, ainda seria necessario revisar autenticacao, logs, observabilidade, HTTPS, controle de origem, limite de payloads e politica de uso das APIs.
 

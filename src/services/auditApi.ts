@@ -60,6 +60,14 @@ export type CreatedAuditUser = {
   token: string;
 };
 
+export type UnblockAuditClientResponse = {
+  ip: string;
+  removedBlocked: number;
+  removedFailures: number;
+  blockedClients: AuditUsersOverview["blockedClients"];
+  failedAttempts: AuditUsersOverview["failedAttempts"];
+};
+
 export async function fetchAuditAccess(token = "") {
   const headers: HeadersInit = token ? { "x-admin-token": token } : {};
   const response = await fetch("/api/audit/access", { headers });
@@ -118,4 +126,24 @@ export async function createAuditUser(token: string, input: { name: string; role
   }
 
   return (await response.json()) as CreatedAuditUser;
+}
+
+export async function unblockAuditClient(token: string, ip: string) {
+  const response = await fetch("/api/audit/blocked-clients/unblock", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-admin-token": token
+    },
+    body: JSON.stringify({ ip })
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { message?: string };
+    const error = new Error(payload.message || "Nao foi possivel desbloquear o cliente.");
+    error.name = String(response.status);
+    throw error;
+  }
+
+  return (await response.json()) as UnblockAuditClientResponse;
 }
