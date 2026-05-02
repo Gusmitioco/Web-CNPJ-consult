@@ -26,6 +26,7 @@ function resultLabel(value: string) {
     "success-full": "Completa",
     "success-partial": "Parcial",
     "success-cache": "Cache",
+    "success-refresh": "Atualizacao manual",
     success: "Concluida",
     error: "Falha"
   };

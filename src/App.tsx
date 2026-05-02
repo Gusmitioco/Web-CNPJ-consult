@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleCheck, ClipboardList, DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sparkles, Sun, TriangleAlert } from "lucide-react";
+import { ArrowLeft, CircleCheck, ClipboardList, DatabaseZap, Download, FileJson, Landmark, Layers3, Moon, RefreshCw, Sun, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AuditLogPanel } from "./components/AuditLogPanel";
 import { CopyButton } from "./components/CopyButton";
@@ -108,14 +108,26 @@ function taxRegimeFromOptions(fields: Field[]) {
   const simples = findField(fields, "Simples Nacional");
 
   if (isPositiveFiscalOption(mei)) {
-    return isPositiveFiscalOption(simples) ? `MEI / Simples Nacional (${simples})` : `MEI (${mei})`;
+    return isPositiveFiscalOption(simples) ? "MEI / Simples Nacional" : "MEI";
   }
 
   if (isPositiveFiscalOption(simples)) {
-    return `Simples Nacional (${simples})`;
+    return "Simples Nacional";
   }
 
   return "";
+}
+
+function fiscalDisplayValue(value: string, fallback = "Nao retornado") {
+  return isUsefulFiscalValue(value) ? value : fallback;
+}
+
+function fiscalSourceLabel(source: string) {
+  const normalized = source.toLowerCase();
+
+  if (normalized.includes("sefaz")) return "SEFAZ-BA";
+  if (normalized.includes("brasilapi") || normalized.includes("receita")) return "BrasilAPI / Receita Federal";
+  return source || "Fonte nao informada";
 }
 
 function App() {
@@ -125,6 +137,8 @@ function App() {
   const [toast, setToast] = useState("");
   const [activeSection, setActiveSection] = useState("consulta");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshingSources, setIsRefreshingSources] = useState(false);
+  const [refreshBlockedPulse, setRefreshBlockedPulse] = useState(false);
   const [queryError, setQueryError] = useState("");
   const [canViewAudit, setCanViewAudit] = useState(false);
   const [auditTokenRequired, setAuditTokenRequired] = useState(true);
@@ -148,29 +162,67 @@ function App() {
         : [],
     [company]
   );
-  const fiscalSummary = useMemo(() => {
+  const fiscalOverview = useMemo(() => {
     if (!company) {
       return {
         status: "Aguardando consulta",
-        detail: "Os dados fiscais serao avaliados apos informar um CNPJ.",
-        source: "Sem fonte consultada"
+        source: "Sem fonte consultada",
+        regime: "Nao avaliado",
+        items: [
+          { label: "Inscricao estadual", value: "Aguardando consulta", source: "SEFAZ/Sintegra" },
+          { label: "Regime tributario", value: "Aguardando consulta", source: "Fontes fiscais" }
+        ]
       };
     }
 
     const ie = findUsefulFiscalField(company.fiscal, ["Inscricao estadual", "Inscricao estadual SEFAZ-BA"]);
     const ieStatus = findUsefulFiscalField(company.fiscal, ["Situacao IE SEFAZ-BA"]);
-    const regime = findUsefulFiscalField(company.fiscal, ["Regime SEFAZ-BA"]) || taxRegimeFromOptions(company.fiscal);
+    const sefazRegime = findUsefulFiscalField(company.fiscal, ["Regime SEFAZ-BA"]);
+    const regime = sefazRegime || taxRegimeFromOptions(company.fiscal);
+    const simples = findField(company.fiscal, "Simples Nacional");
+    const mei = findField(company.fiscal, "MEI");
     const cadastralStatus = findUsefulFiscalField(company.fiscal, ["Situacao cadastral RF"]);
+    const sefazStatus = findUsefulFiscalField(company.fiscal, ["Status consulta SEFAZ-BA"]);
+    const fiscalSource = findField(company.fiscal, "Fonte fiscal");
+    const normalizedFiscalSource = fiscalSourceLabel(fiscalSource);
     const status = ieStatus || cadastralStatus || "Situacao fiscal nao retornada";
 
     return {
       status,
-      detail: [
-        `IE: ${ie || "Nao retornada"}`,
-        `Situacao IE: ${ieStatus || "Nao retornada"}`,
-        `Regime tributario: ${regime || "Nao retornado pelas fontes consultadas"}`
-      ].join(" - "),
-      source: findField(company.fiscal, "Fonte fiscal")
+      source: normalizedFiscalSource,
+      regime: regime || "Nao retornado pelas fontes consultadas",
+      items: [
+        {
+          label: "Inscricao estadual",
+          value: fiscalDisplayValue(ie, "Nao retornada"),
+          source: ie ? "SEFAZ-BA" : "SEFAZ/Sintegra"
+        },
+        {
+          label: "Situacao da IE",
+          value: fiscalDisplayValue(ieStatus, "Nao retornada"),
+          source: "SEFAZ-BA"
+        },
+        {
+          label: "Regime SEFAZ",
+          value: fiscalDisplayValue(sefazRegime, "Nao retornado"),
+          source: "SEFAZ-BA"
+        },
+        {
+          label: "Simples Nacional",
+          value: fiscalDisplayValue(simples, "Nao informado"),
+          source: "BrasilAPI / Receita Federal"
+        },
+        {
+          label: "MEI",
+          value: fiscalDisplayValue(mei, "Nao informado"),
+          source: "BrasilAPI / Receita Federal"
+        },
+        {
+          label: "Consulta SEFAZ",
+          value: fiscalDisplayValue(sefazStatus, "Nao retornada"),
+          source: "SEFAZ-BA"
+        }
+      ]
     };
   }, [company]);
 
@@ -203,6 +255,30 @@ function App() {
       notify("Consulta nao concluida");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleRefreshCompany() {
+    if (!company || isLoading || isRefreshingSources) return;
+
+    setIsRefreshingSources(true);
+    setQueryError("");
+
+    try {
+      const result = await fetchCompanyByCnpj(company.cnpj, { refresh: true });
+      setCompany(result);
+      setLastQuery(nowLabel());
+      setHistory(saveConsultationHistory(result));
+      notify("Dados atualizados");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel atualizar os dados.";
+
+      setRefreshBlockedPulse(true);
+      window.setTimeout(() => setRefreshBlockedPulse(false), 520);
+      setQueryError(message);
+      notify(message);
+    } finally {
+      setIsRefreshingSources(false);
     }
   }
 
@@ -392,10 +468,6 @@ function App() {
             {company ? (
             <header className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.09em] text-[#0f928c]">
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  Prototipo visual
-                </p>
                 <h1 className="max-w-3xl text-3xl font-black leading-[1.05] text-[#484848] sm:text-4xl">
                   Consulta fiscal de CNPJ
                 </h1>
@@ -514,7 +586,18 @@ function App() {
                     </p>
                     <h2 className="text-base font-black">Fontes da consulta</h2>
                   </div>
-                  <RefreshCw className="h-5 w-5 text-[#0f928c]" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={handleRefreshCompany}
+                    disabled={isLoading || isRefreshingSources}
+                    aria-label="Atualizar fontes da consulta"
+                    title="Atualizar fontes"
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/42 bg-white/42 text-[#006465] shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_10px_24px_rgba(0,100,101,0.08)] transition hover:bg-[#beee3b]/28 disabled:opacity-60 ${
+                      refreshBlockedPulse ? "animate-shake" : ""
+                    }`}
+                  >
+                    <RefreshCw className={`h-5 w-5 ${isRefreshingSources ? "animate-spin" : ""}`} aria-hidden="true" />
+                  </button>
                 </div>
 
                 <div className="rounded-xl border border-[#0f928c]/22 bg-[#00c9d2]/10 p-4">
@@ -620,13 +703,27 @@ function App() {
                       <Landmark className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div>
-                      <strong className="block">{fiscalSummary.status}</strong>
-                      <span className="text-sm font-semibold text-[#484848]/72">{fiscalSummary.source}</span>
+                      <strong className="block">{fiscalOverview.status}</strong>
+                      <span className="text-sm font-semibold text-[#484848]/72">{fiscalOverview.source}</span>
                     </div>
                   </div>
-                  <p className="text-sm font-semibold leading-relaxed text-[#484848]">
-                    {fiscalSummary.detail}
-                  </p>
+                  <div className="mb-4 rounded-xl border border-white/34 bg-white/20 p-3">
+                    <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">
+                      Regime tributario
+                    </span>
+                    <strong className="mt-1 block break-words text-sm text-[#484848]">{fiscalOverview.regime}</strong>
+                  </div>
+                  <div className="grid gap-2">
+                    {fiscalOverview.items.map((item) => (
+                      <div key={item.label} className="rounded-xl border border-white/34 bg-white/20 p-3">
+                        <span className="block text-[0.68rem] font-black uppercase tracking-[0.08em] text-[#006465]">
+                          {item.label}
+                        </span>
+                        <strong className="mt-1 block break-words text-sm text-[#484848]">{item.value}</strong>
+                        <span className="mt-1 block text-xs font-bold text-[#484848]/66">Fonte: {item.source}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {company.fiscal.map((field) => (

@@ -65,6 +65,22 @@
   box-sizing: border-box;
 }
 
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-3px);
+  }
+  40%, 80% {
+    transform: translateX(3px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.42s ease-in-out;
+}
+
 html {
   min-height: 100%;
   background-color: var(--page-background-color);

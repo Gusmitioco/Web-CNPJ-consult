@@ -63,6 +63,11 @@ type CompanyApiResponse = {
     expiresAt?: string;
     ttlMs?: number;
   };
+  refresh?: {
+    requested: boolean;
+    accepted: boolean;
+    windowMs: number;
+  };
   sources?: {
     brasilApi?: {
       ok: boolean;
@@ -158,13 +163,38 @@ function mapCacheStatus(cache?: CompanyApiResponse["cache"]): CacheStatus {
   };
 }
 
-function withResponseMetadata(company: Company, data: CompanyApiResponse): Company {
+function mapResponseCacheStatus(data: CompanyApiResponse): CacheStatus {
   const cache = mapCacheStatus(data.cache);
+
+  if (data.refresh?.accepted) {
+    return {
+      ...cache,
+      label: "Atualizado agora",
+      detail: "Atualizacao manual concluida e armazenada temporariamente no cache local.",
+      refreshRequested: true,
+      refreshAccepted: true
+    };
+  }
+
+  return {
+    ...cache,
+    refreshRequested: Boolean(data.refresh?.requested),
+    refreshAccepted: Boolean(data.refresh?.accepted)
+  };
+}
+
+function withResponseMetadata(company: Company, data: CompanyApiResponse): Company {
+  const cache = mapResponseCacheStatus(data);
   const history = cache.hit
     ? [
         ...company.history,
         { source: "Cache local", status: "Resposta reaproveitada sem nova consulta externa", date: nowLabel() }
       ]
+    : cache.refreshAccepted
+      ? [
+          ...company.history,
+          { source: "Atualizacao manual", status: "Dados consultados novamente nas fontes disponiveis", date: nowLabel() }
+        ]
     : company.history;
 
   return {
@@ -299,9 +329,10 @@ function mapBrasilApiToCompany(data: BrasilApiCompany): Company {
   };
 }
 
-export async function fetchCompanyByCnpj(cnpj: string) {
+export async function fetchCompanyByCnpj(cnpj: string, options: { refresh?: boolean } = {}) {
   const digits = onlyDigits(cnpj);
-  const response = await fetch(`/api/company/${digits}`);
+  const query = options.refresh ? "?refresh=1" : "";
+  const response = await fetch(`/api/company/${digits}${query}`);
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { message?: string };

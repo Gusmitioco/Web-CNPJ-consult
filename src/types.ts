@@ -32,6 +32,8 @@ export type CacheStatus = {
   cachedAt?: string;
   expiresAt?: string;
   ttlMs?: number;
+  refreshRequested?: boolean;
+  refreshAccepted?: boolean;
 };
 
 export type Company = {

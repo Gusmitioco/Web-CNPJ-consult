@@ -24,6 +24,10 @@ const rateLimiter = createRateLimiter({
   windowMs: config.rateLimitWindowMs,
   maxRequests: config.maxRequestsPerWindow
 });
+const refreshLimiter = createRateLimiter({
+  windowMs: config.refreshWindowMs,
+  maxRequests: 1
+});
 
 const securityHeaders = {
   "x-content-type-options": "nosniff",
@@ -61,6 +65,14 @@ function getClientIp(request) {
 
 function isRateLimited(request) {
   return rateLimiter.isLimited(getClientIp(request));
+}
+
+function getRefreshLimitKey(request, cnpj) {
+  return `${getClientIp(request)}:${cnpj}`;
+}
+
+function isRefreshRateLimited(request, cnpj) {
+  return refreshLimiter.isLimited(getRefreshLimitKey(request, cnpj));
 }
 
 function getAuditToken(request) {
@@ -107,6 +119,14 @@ function cacheSummary({ hit, cachedAt = "", expiresAt = 0 } = {}) {
   };
 }
 
+function refreshSummary({ requested = false, accepted = false } = {}) {
+  return {
+    requested: Boolean(requested),
+    accepted: Boolean(accepted),
+    windowMs: config.refreshWindowMs
+  };
+}
+
 async function recordConsultationSafe(request, details) {
   try {
     await recordConsultation(request, details);
@@ -129,9 +149,9 @@ function validateApiRequest(request, response, cnpj) {
   return true;
 }
 
-async function fetchBrasilApiPayload(cnpj) {
+async function fetchBrasilApiPayload(cnpj, { refresh = false } = {}) {
   const cached = cnpjCache.get(cnpj);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!refresh && cached && cached.expiresAt > Date.now()) {
     return { ok: true, status: 200, fromCache: true, payload: cached.payload, message: "Dados publicos retornados do cache." };
   }
 
@@ -248,17 +268,30 @@ async function handleSefazBahiaRequest(request, response, pathname) {
 }
 
 async function handleCompanyRequest(request, response, pathname) {
-  const cnpj = onlyDigits(pathname.replace("/api/company/", ""));
+  const url = typeof pathname === "string" ? null : pathname;
+  const requestPathname = url?.pathname || pathname;
+  const cnpj = onlyDigits(requestPathname.replace("/api/company/", ""));
+  const refreshRequested = url?.searchParams.get("refresh") === "1";
 
   if (!validateApiRequest(request, response, cnpj)) {
     return;
   }
 
+  if (refreshRequested && isRefreshRateLimited(request, cnpj)) {
+    sendJson(response, 429, {
+      message: `Atualizacao recente para este CNPJ. Aguarde ${Math.ceil(config.refreshWindowMs / 1000)} segundos antes de atualizar novamente.`,
+      code: "REFRESH_RATE_LIMIT",
+      retryAfterMs: config.refreshWindowMs
+    });
+    return;
+  }
+
   const cached = companyCache.get(cnpj);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (!refreshRequested && cached && cached.expiresAt > Date.now()) {
     const payload = {
       ...cached.payload,
-      cache: cacheSummary({ hit: true, cachedAt: cached.cachedAt, expiresAt: cached.expiresAt })
+      cache: cacheSummary({ hit: true, cachedAt: cached.cachedAt, expiresAt: cached.expiresAt }),
+      refresh: refreshSummary({ requested: false, accepted: false })
     };
 
     await recordConsultationSafe(request, {
@@ -271,7 +304,10 @@ async function handleCompanyRequest(request, response, pathname) {
     return;
   }
 
-  const [publicData, fiscalData] = await Promise.all([fetchBrasilApiPayload(cnpj), fetchSefazBahiaPayload(cnpj)]);
+  const [publicData, fiscalData] = await Promise.all([
+    fetchBrasilApiPayload(cnpj, { refresh: refreshRequested }),
+    fetchSefazBahiaPayload(cnpj)
+  ]);
   const hasFiscalRegistration = Boolean(fiscalData.ok && fiscalData.payload?.registrations?.length);
 
   if (!publicData.ok && !hasFiscalRegistration) {
@@ -309,7 +345,8 @@ async function handleCompanyRequest(request, response, pathname) {
         code: fiscalData.code
       }
     },
-    cache: cacheSummary({ hit: false })
+    cache: cacheSummary({ hit: false }),
+    refresh: refreshSummary({ requested: refreshRequested, accepted: refreshRequested })
   };
 
   const cachedAt = new Date().toISOString();
@@ -323,7 +360,7 @@ async function handleCompanyRequest(request, response, pathname) {
   await recordConsultationSafe(request, {
     cnpj,
     route: "company",
-    result: publicData.ok && hasFiscalRegistration ? "success-full" : "success-partial",
+    result: refreshRequested ? "success-refresh" : publicData.ok && hasFiscalRegistration ? "success-full" : "success-partial",
     sources: payload.sources
   });
   sendJson(response, 200, payload);
@@ -462,7 +499,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname.startsWith("/api/company/")) {
-    await handleCompanyRequest(request, response, url.pathname);
+    await handleCompanyRequest(request, response, url);
     return;
   }
 

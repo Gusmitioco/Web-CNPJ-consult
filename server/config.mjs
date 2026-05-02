@@ -57,6 +57,7 @@ export const config = {
   upstreamTimeoutMs: numberFromEnv("UPSTREAM_TIMEOUT_MS", 8000),
   rateLimitWindowMs: numberFromEnv("RATE_LIMIT_WINDOW_MS", 60 * 1000),
   maxRequestsPerWindow: numberFromEnv("RATE_LIMIT_MAX", 40),
+  refreshWindowMs: numberFromEnv("REFRESH_WINDOW_MS", 2 * 60 * 1000),
   sefazBa: {
     endpoint:
       process.env.SEFAZ_BA_ENDPOINT ||

@@ -26,6 +26,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Integracao inicial com BrasilAPI.
 - Cache em memoria por 10 minutos.
 - Indicacao visual quando a consulta veio do cache local ou de atualizacao em tempo real.
+- Atualizacao manual das fontes pelo painel de saude da consulta, com limite por IP e CNPJ.
 - Historico de consultas local por navegador, usando `localStorage`.
 - Exportacao em JSON estruturado.
 - Relatorio para salvar/imprimir em PDF pelo navegador.
@@ -41,6 +42,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Testes automatizados pequenos para validacao de CNPJ e rate limit.
 - Integracao inicial com consulta cadastral SEFAZ-BA via backend local.
 - Tela principal consumindo a SEFAZ-BA para inscricao estadual, situacao da IE, regime e CNAE estadual quando o certificado estiver configurado.
+- Painel fiscal separando IE, situacao da IE, regime SEFAZ, Simples Nacional, MEI e fonte de cada informacao.
 - Fallback parcial pela SEFAZ-BA quando a BrasilAPI nao retorna o CNPJ, mantendo aviso no historico da consulta.
 - Consulta unificada no backend para agregar dados publicos e fiscais antes de entregar ao frontend.
 - Log local de consultas em arquivo JSON ignorado pelo Git.
@@ -107,6 +109,7 @@ CACHE_TTL_MS=600000
 UPSTREAM_TIMEOUT_MS=8000
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=40
+REFRESH_WINDOW_MS=120000
 AUDIT_ALLOWED_IPS=127.0.0.1,::1
 AUDIT_ADMIN_TOKEN=troque-este-token
 AUDIT_MASTER_TOKEN=bc1qexemplo-de-token-master
@@ -191,6 +194,8 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 32: painel master mais completo, exibindo tentativas negadas e permitindo desbloquear clientes bloqueados por falha de token.
 - Marco 33: auditoria sem login de usuario final, com IP como referencia principal, filtros avancados, detalhe de registro e exportacao JSON/CSV.
 - Marco 34: status de cache e fontes mais claro, diferenciando resposta em tempo real, cache local, cache da fonte, timeout, falha e fonte nao configurada.
+- Marco 35: painel fiscal mais claro, separando dados estaduais da SEFAZ-BA e dados publicos da Receita/BrasilAPI com fonte por informacao.
+- Marco 36: botao de atualizacao real no painel de saude da consulta, usando `refresh=1`, ignorando o cache local com limite por IP/CNPJ e feedback visual de giro ou bloqueio.
 
 ## Observacoes sobre APIs e raspagem
 
