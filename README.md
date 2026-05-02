@@ -46,6 +46,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Indicador visual das fontes que responderam em cada consulta.
 - Pagina de auditoria local para visualizar e filtrar consultas registradas.
 - Painel master de auditoria com usuarios, tentativas negadas, bloqueios ativos e desbloqueio de cliente pela interface.
+- Auditoria com filtros por data, CNPJ, IP, rota e resultado, detalhe do log e exportacao JSON/CSV.
 
 ## Como rodar
 
@@ -187,6 +188,7 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 30: perfil master local com token individual, visao de usuarios e bloqueios.
 - Marco 31: criacao local de usuarios de auditoria com tokens individuais no formato `bc1q...`.
 - Marco 32: painel master mais completo, exibindo tentativas negadas e permitindo desbloquear clientes bloqueados por falha de token.
+- Marco 33: auditoria sem login de usuario final, com IP como referencia principal, filtros avancados, detalhe de registro e exportacao JSON/CSV.
 
 ## Observacoes sobre APIs e raspagem
 
