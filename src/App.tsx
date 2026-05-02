@@ -517,16 +517,41 @@ function App() {
                   <RefreshCw className="h-5 w-5 text-[#0f928c]" aria-hidden="true" />
                 </div>
 
+                <div className="rounded-xl border border-[#0f928c]/22 bg-[#00c9d2]/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <strong className="flex items-center gap-2 text-sm">
+                        {company.cache?.hit ? (
+                          <DatabaseZap className="h-4 w-4 text-[#006465]" aria-hidden="true" />
+                        ) : (
+                          <CircleCheck className="h-4 w-4 text-[#0f928c]" aria-hidden="true" />
+                        )}
+                        {company.cache?.label || "Tempo real"}
+                      </strong>
+                      <span className="mt-1 block text-sm font-semibold text-[#484848]/72">
+                        {company.cache?.detail || "Resposta obtida diretamente das fontes nesta consulta."}
+                      </span>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-black ${
+                      company.cache?.hit ? "bg-[#00c9d2]/13 text-[#006465]" : "bg-[#beee3b]/55 text-[#006465]"
+                    }`}>
+                      {company.cache?.hit ? "Cache" : "Atualizado"}
+                    </span>
+                  </div>
+                </div>
+
                 {(company.sources?.length ? company.sources : [
-                  { name: "BrasilAPI", ok: true, status: "Concluida", message: "Cadastro publico consultado." },
+                  { name: "BrasilAPI", ok: true, status: "Tempo real", message: "Cadastro publico consultado." },
                   { name: "SEFAZ-BA", ok: false, status: "Nao retornada", message: "Fonte fiscal sem retorno nesta consulta." }
                 ]).map((source) => (
                   <div key={source.name} className="rounded-xl border border-white/38 bg-white/24 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_22px_rgba(0,100,101,0.08)] backdrop-blur-md">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <strong className="flex items-center gap-2 text-sm">
-                          {source.ok ? (
+                          {source.ok && !source.fromCache ? (
                             <CircleCheck className="h-4 w-4 text-[#0f928c]" aria-hidden="true" />
+                          ) : source.fromCache ? (
+                            <DatabaseZap className="h-4 w-4 text-[#006465]" aria-hidden="true" />
                           ) : (
                             <TriangleAlert className="h-4 w-4 text-[#006465]" aria-hidden="true" />
                           )}
@@ -535,7 +560,7 @@ function App() {
                         <span className="mt-1 block text-sm font-semibold text-[#484848]/72">{source.message}</span>
                       </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-black ${
-                        source.ok ? "bg-[#beee3b]/55 text-[#006465]" : "bg-[#00c9d2]/13 text-[#006465]"
+                        source.ok && !source.fromCache ? "bg-[#beee3b]/55 text-[#006465]" : "bg-[#00c9d2]/13 text-[#006465]"
                       }`}>
                         {source.status}
                       </span>

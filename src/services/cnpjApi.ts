@@ -1,4 +1,4 @@
-import type { Company, SourceStatus } from "../types";
+import type { CacheStatus, Company, SourceStatus } from "../types";
 import { hasSefazBaRegistration, mapSefazBaToCompany, mergeCompanyWithSefazBa, type SefazBaResponse } from "./sefazBaApi";
 import { formatCnpj, onlyDigits } from "../utils/cnpj";
 
@@ -57,11 +57,18 @@ type CompanyApiResponse = {
   cnpj: string;
   publicData: BrasilApiCompany | null;
   fiscalData: SefazBaResponse | null;
+  cache?: {
+    hit: boolean;
+    cachedAt?: string;
+    expiresAt?: string;
+    ttlMs?: number;
+  };
   sources?: {
     brasilApi?: {
       ok: boolean;
       status: number;
       message?: string;
+      fromCache?: boolean;
     };
     sefazBa?: {
       ok: boolean;
@@ -73,23 +80,99 @@ type CompanyApiResponse = {
   };
 };
 
-function mapSourceStatuses(sources?: CompanyApiResponse["sources"]): SourceStatus[] {
+function formatDateTime(value?: string) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function sourceStatusLabel(source?: { ok?: boolean; configured?: boolean; code?: string; fromCache?: boolean }, cache?: CompanyApiResponse["cache"]) {
+  if (cache?.hit) return "Cache local";
+  if (source?.fromCache) return "Cache da fonte";
+  if (source?.ok) return "Tempo real";
+  if (source?.configured === false) return "Nao configurada";
+  if (source?.code?.toLowerCase().includes("timeout")) return "Timeout";
+  return "Falha parcial";
+}
+
+function mapSourceStatuses(sources?: CompanyApiResponse["sources"], cache?: CompanyApiResponse["cache"]): SourceStatus[] {
   if (!sources) return [];
 
   return [
     {
       name: "BrasilAPI",
       ok: Boolean(sources.brasilApi?.ok),
-      status: sources.brasilApi?.ok ? "Concluida" : "Falha parcial",
-      message: sources.brasilApi?.message || "Sem retorno informado."
+      status: sourceStatusLabel(sources.brasilApi, cache),
+      message: sources.brasilApi?.message || "Sem retorno informado.",
+      fromCache: Boolean(cache?.hit || sources.brasilApi?.fromCache)
     },
     {
       name: "SEFAZ-BA",
       ok: Boolean(sources.sefazBa?.ok),
-      status: sources.sefazBa?.ok ? "Concluida" : sources.sefazBa?.configured === false ? "Nao configurada" : "Falha parcial",
-      message: sources.sefazBa?.message || "Sem retorno informado."
+      status: sourceStatusLabel(sources.sefazBa, cache),
+      message: sources.sefazBa?.message || "Sem retorno informado.",
+      configured: sources.sefazBa?.configured,
+      code: sources.sefazBa?.code,
+      fromCache: Boolean(cache?.hit)
     }
   ];
+}
+
+function mapCacheStatus(cache?: CompanyApiResponse["cache"]): CacheStatus {
+  if (!cache) {
+    return {
+      hit: false,
+      label: "Tempo real",
+      detail: "Resposta obtida diretamente das fontes nesta consulta."
+    };
+  }
+
+  if (cache.hit) {
+    const expires = formatDateTime(cache.expiresAt);
+
+    return {
+      hit: true,
+      label: "Cache local",
+      detail: expires ? `Resposta reaproveitada do cache local. Expira em ${expires}.` : "Resposta reaproveitada do cache local.",
+      cachedAt: cache.cachedAt,
+      expiresAt: cache.expiresAt,
+      ttlMs: cache.ttlMs
+    };
+  }
+
+  return {
+    hit: false,
+    label: "Tempo real",
+    detail: "Resposta atualizada agora e armazenada temporariamente no cache local.",
+    cachedAt: cache.cachedAt,
+    expiresAt: cache.expiresAt,
+    ttlMs: cache.ttlMs
+  };
+}
+
+function withResponseMetadata(company: Company, data: CompanyApiResponse): Company {
+  const cache = mapCacheStatus(data.cache);
+  const history = cache.hit
+    ? [
+        ...company.history,
+        { source: "Cache local", status: "Resposta reaproveitada sem nova consulta externa", date: nowLabel() }
+      ]
+    : company.history;
+
+  return {
+    ...company,
+    history,
+    sources: mapSourceStatuses(data.sources, data.cache),
+    cache
+  };
 }
 
 function formatDate(value?: string) {
@@ -235,14 +318,11 @@ export async function fetchCompanyByCnpj(cnpj: string) {
   if (data.publicData) {
     const company = mapBrasilApiToCompany(data.publicData);
     const merged = data.fiscalData ? mergeCompanyWithSefazBa(company, data.fiscalData) : company;
-    return { ...merged, sources: mapSourceStatuses(data.sources) };
+    return withResponseMetadata(merged, data);
   }
 
   if (hasSefazBaRegistration(data.fiscalData)) {
-    return {
-      ...mapSefazBaToCompany(data.fiscalData, data.sources?.brasilApi?.message),
-      sources: mapSourceStatuses(data.sources)
-    };
+    return withResponseMetadata(mapSefazBaToCompany(data.fiscalData, data.sources?.brasilApi?.message), data);
   }
 
   throw new Error(data.sources?.brasilApi?.message || data.sources?.sefazBa?.message || "Nao foi possivel consultar o CNPJ agora.");

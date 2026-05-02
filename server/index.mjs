@@ -93,7 +93,17 @@ function sourceSummary(result) {
     status: result.status,
     message: result.message,
     code: result.code,
-    configured: result.configured
+    configured: result.configured,
+    fromCache: Boolean(result.fromCache)
+  };
+}
+
+function cacheSummary({ hit, cachedAt = "", expiresAt = 0 } = {}) {
+  return {
+    hit: Boolean(hit),
+    cachedAt,
+    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "",
+    ttlMs: expiresAt ? Math.max(0, expiresAt - Date.now()) : 0
   };
 }
 
@@ -122,7 +132,7 @@ function validateApiRequest(request, response, cnpj) {
 async function fetchBrasilApiPayload(cnpj) {
   const cached = cnpjCache.get(cnpj);
   if (cached && cached.expiresAt > Date.now()) {
-    return { ok: true, status: 200, payload: cached.payload, message: "Dados publicos retornados do cache." };
+    return { ok: true, status: 200, fromCache: true, payload: cached.payload, message: "Dados publicos retornados do cache." };
   }
 
   const controller = new AbortController();
@@ -155,7 +165,7 @@ async function fetchBrasilApiPayload(cnpj) {
       expiresAt: Date.now() + config.cacheTtlMs,
       payload
     });
-    return { ok: true, status: 200, payload, message: "Dados publicos retornados." };
+    return { ok: true, status: 200, fromCache: false, payload, message: "Dados publicos retornados em tempo real." };
   } catch (error) {
     const message =
       error?.name === "AbortError"
@@ -246,13 +256,18 @@ async function handleCompanyRequest(request, response, pathname) {
 
   const cached = companyCache.get(cnpj);
   if (cached && cached.expiresAt > Date.now()) {
+    const payload = {
+      ...cached.payload,
+      cache: cacheSummary({ hit: true, cachedAt: cached.cachedAt, expiresAt: cached.expiresAt })
+    };
+
     await recordConsultationSafe(request, {
       cnpj,
       route: "company",
       result: "success-cache",
-      sources: cached.payload.sources
+      sources: payload.sources
     });
-    sendJson(response, 200, cached.payload);
+    sendJson(response, 200, payload);
     return;
   }
 
@@ -283,7 +298,8 @@ async function handleCompanyRequest(request, response, pathname) {
       brasilApi: {
         ok: publicData.ok,
         status: publicData.status,
-        message: publicData.message
+        message: publicData.message,
+        fromCache: Boolean(publicData.fromCache)
       },
       sefazBa: {
         ok: fiscalData.ok,
@@ -292,11 +308,16 @@ async function handleCompanyRequest(request, response, pathname) {
         message: fiscalData.message,
         code: fiscalData.code
       }
-    }
+    },
+    cache: cacheSummary({ hit: false })
   };
 
+  const cachedAt = new Date().toISOString();
+  const expiresAt = Date.now() + config.cacheTtlMs;
+  payload.cache = cacheSummary({ hit: false, cachedAt, expiresAt });
   companyCache.set(cnpj, {
-    expiresAt: Date.now() + config.cacheTtlMs,
+    cachedAt,
+    expiresAt,
     payload
   });
   await recordConsultationSafe(request, {

@@ -20,6 +20,18 @@ export type SourceStatus = {
   ok: boolean;
   status: string;
   message: string;
+  fromCache?: boolean;
+  configured?: boolean;
+  code?: string;
+};
+
+export type CacheStatus = {
+  hit: boolean;
+  label: string;
+  detail: string;
+  cachedAt?: string;
+  expiresAt?: string;
+  ttlMs?: number;
 };
 
 export type Company = {
@@ -38,4 +50,5 @@ export type Company = {
   partners: Partner[];
   history: HistoryItem[];
   sources?: SourceStatus[];
+  cache?: CacheStatus;
 };

@@ -25,6 +25,7 @@ O projeto tambem serve como estudo para entender por que dados de Receita Federa
 - Backend Node local com rota `/api/cnpj/:cnpj`.
 - Integracao inicial com BrasilAPI.
 - Cache em memoria por 10 minutos.
+- Indicacao visual quando a consulta veio do cache local ou de atualizacao em tempo real.
 - Historico de consultas local por navegador, usando `localStorage`.
 - Exportacao em JSON estruturado.
 - Relatorio para salvar/imprimir em PDF pelo navegador.
@@ -189,6 +190,7 @@ Depois da build 16, os commits passaram a documentar incrementos menores. A part
 - Marco 31: criacao local de usuarios de auditoria com tokens individuais no formato `bc1q...`.
 - Marco 32: painel master mais completo, exibindo tentativas negadas e permitindo desbloquear clientes bloqueados por falha de token.
 - Marco 33: auditoria sem login de usuario final, com IP como referencia principal, filtros avancados, detalhe de registro e exportacao JSON/CSV.
+- Marco 34: status de cache e fontes mais claro, diferenciando resposta em tempo real, cache local, cache da fonte, timeout, falha e fonte nao configurada.
 
 ## Observacoes sobre APIs e raspagem
 
